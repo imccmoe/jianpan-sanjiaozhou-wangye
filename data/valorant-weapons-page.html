@@ -1,0 +1,713 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>武器图鉴 - 无畏契约百科</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 武器页面专用样式 */
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+        .filter-btn {
+            padding: 0.6rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .filter-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .weapons-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            padding: 2rem 0 4rem;
+        }
+        .weapon-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .weapon-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+            border-color: rgba(255,70,85,0.3);
+        }
+        .weapon-card.hidden {
+            display: none;
+        }
+        .weapon-image {
+            height: 140px;
+            background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-card) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            position: relative;
+        }
+        .weapon-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .weapon-price {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: rgba(255,70,85,0.9);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+        .weapon-price.free {
+            background: rgba(0,212,170,0.9);
+        }
+        .weapon-content {
+            padding: 1.25rem;
+        }
+        .weapon-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        .weapon-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        .weapon-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+        .stat-box {
+            background: rgba(255,255,255,0.03);
+            padding: 0.75rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: block;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+            display: block;
+        }
+        @media (max-width: 768px) {
+            .weapons-grid {
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            }
+            .filter-bar {
+                gap: 0.5rem;
+            }
+            .filter-btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <span class="logo-icon">◆</span>
+                <span class="logo-text">VALORANT WIKI</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="index.html">首页</a></li>
+                <li><a href="agents.html">英雄</a></li>
+                <li><a href="maps.html">地图</a></li>
+                <li><a href="weapons.html" class="active">武器</a></li>
+                <li><a href="meta.html">强势英雄</a></li>
+                <li><a href="edg-champion.html">EDG夺冠</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="page-header">
+        <div class="container">
+            <h1 class="page-title">武器图鉴</h1>
+            <p class="page-subtitle">了解所有武器的性能数据，选择最适合你的装备</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="filter-bar">
+            <button class="filter-btn active" data-filter="all">全部</button>
+            <button class="filter-btn" data-filter="sidearm">随身武器</button>
+            <button class="filter-btn" data-filter="smg">冲锋枪</button>
+            <button class="filter-btn" data-filter="shotgun">霰弹枪</button>
+            <button class="filter-btn" data-filter="rifle">步枪</button>
+            <button class="filter-btn" data-filter="sniper">狙击枪</button>
+            <button class="filter-btn" data-filter="heavy">重型武器</button>
+        </div>
+
+        <div class="weapons-grid">
+            <!-- 随身武器 -->
+            <div class="weapon-card" data-category="sidearm">
+                <div class="weapon-image">
+                    <img src="images/weapons/classic.png" alt="经典">
+                    <span class="weapon-price free">免费</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">随身武器</span>
+                    <h3 class="weapon-name">经典</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">78</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">26</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">6.75</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">12</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="sidearm">
+                <div class="weapon-image">
+                    <img src="images/weapons/shorty.png" alt="短炮">
+                    <span class="weapon-price">150</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">随身武器</span>
+                    <h3 class="weapon-name">短炮</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">24×12</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">12×12</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">3.3</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">2</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="sidearm">
+                <div class="weapon-image">
+                    <img src="images/weapons/frenzy.png" alt="狂弑">
+                    <span class="weapon-price">450</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">随身武器</span>
+                    <h3 class="weapon-name">狂弑</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">78</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">26</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">10</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">13</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="sidearm">
+                <div class="weapon-image">
+                    <img src="images/weapons/ghost.png" alt="鬼魅">
+                    <span class="weapon-price">500</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">随身武器</span>
+                    <h3 class="weapon-name">鬼魅</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">105</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">30</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">6.75</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">15</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="sidearm">
+                <div class="weapon-image">
+                    <img src="images/weapons/sheriff.png" alt="正义">
+                    <span class="weapon-price">800</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">随身武器</span>
+                    <h3 class="weapon-name">正义</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">159</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">55</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">4</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">6</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 冲锋枪 -->
+            <div class="weapon-card" data-category="smg">
+                <div class="weapon-image">
+                    <img src="images/weapons/stinger.png" alt="蜂刺">
+                    <span class="weapon-price">950</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">冲锋枪</span>
+                    <h3 class="weapon-name">蜂刺</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">67</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">27</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">18</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">20</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="smg">
+                <div class="weapon-image">
+                    <img src="images/weapons/spectre.png" alt="骇灵">
+                    <span class="weapon-price">1600</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">冲锋枪</span>
+                    <h3 class="weapon-name">骇灵</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">78</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">26</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">13.33</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">30</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 霰弹枪 -->
+            <div class="weapon-card" data-category="shotgun">
+                <div class="weapon-image">
+                    <img src="images/weapons/bucky.png" alt="雄鹿">
+                    <span class="weapon-price">850</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">霰弹枪</span>
+                    <h3 class="weapon-name">雄鹿</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">40×15</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">20×15</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">1.1</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">5</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="shotgun">
+                <div class="weapon-image">
+                    <img src="images/weapons/judge.png" alt="判官">
+                    <span class="weapon-price">1850</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">霰弹枪</span>
+                    <h3 class="weapon-name">判官</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">34×12</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">17×12</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">3.5</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">7</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 步枪 -->
+            <div class="weapon-card" data-category="rifle">
+                <div class="weapon-image">
+                    <img src="images/weapons/bulldog.png" alt="獠犬">
+                    <span class="weapon-price">2050</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">步枪</span>
+                    <h3 class="weapon-name">獠犬</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">115</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">35</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">9.15</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">24</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="rifle">
+                <div class="weapon-image">
+                    <img src="images/weapons/guardian.png" alt="戍卫">
+                    <span class="weapon-price">2250</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">步枪</span>
+                    <h3 class="weapon-name">戍卫</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">195</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">65</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">5.25</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">12</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="rifle">
+                <div class="weapon-image">
+                    <img src="images/weapons/phantom.png" alt="幻象">
+                    <span class="weapon-price">2900</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">步枪</span>
+                    <h3 class="weapon-name">幻象</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">140</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">35</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">11</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">30</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="rifle">
+                <div class="weapon-image">
+                    <img src="images/weapons/vandal.png" alt="暴徒">
+                    <span class="weapon-price">2900</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">步枪</span>
+                    <h3 class="weapon-name">暴徒</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">160</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">40</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">9.75</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">25</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 狙击枪 -->
+            <div class="weapon-card" data-category="sniper">
+                <div class="weapon-image">
+                    <img src="images/weapons/marshal.png" alt="飞将">
+                    <span class="weapon-price">950</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">狙击枪</span>
+                    <h3 class="weapon-name">飞将</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">202</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">101</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">1.5</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">5</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="sniper">
+                <div class="weapon-image">
+                    <img src="images/weapons/operator.png" alt="间谍">
+                    <span class="weapon-price">4700</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">狙击枪</span>
+                    <h3 class="weapon-name">间谍</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">255</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">150</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">0.6</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">5</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 重型武器 -->
+            <div class="weapon-card" data-category="heavy">
+                <div class="weapon-image">
+                    <img src="images/weapons/ares.png" alt="战神">
+                    <span class="weapon-price">1600</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">重型武器</span>
+                    <h3 class="weapon-name">战神</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">72</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">30</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">10</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">50</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weapon-card" data-category="heavy">
+                <div class="weapon-image">
+                    <img src="images/weapons/odin.png" alt="奥丁">
+                    <span class="weapon-price">3200</span>
+                </div>
+                <div class="weapon-content">
+                    <span class="weapon-type">重型武器</span>
+                    <h3 class="weapon-name">奥丁</h3>
+                    <div class="weapon-stats">
+                        <div class="stat-box">
+                            <span class="stat-value">95</span>
+                            <span class="stat-label">伤害(头)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">38</span>
+                            <span class="stat-label">伤害(身)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">12</span>
+                            <span class="stat-label">射速</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value">100</span>
+                            <span class="stat-label">弹匣</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer style="background: var(--bg-secondary); padding: 3rem 0; border-top: 1px solid rgba(255,255,255,0.05);">
+        <div class="container">
+            <div style="text-align: center;">
+                <p style="font-size: 1.25rem; font-weight: 700; color: var(--primary); margin-bottom: 0.5rem;">制作人：粥粥</p>
+                <p style="color: var(--text-secondary);">📱 电话: 13728997226 | 💬 微信: lzg805902</p>
+                <p style="color: var(--text-muted); margin-top: 1rem; font-size: 0.875rem;">© 2024 无畏契约百科 | 本网站为玩家自制，非官方网站</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 筛选功能
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 更新按钮状态
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // 筛选武器卡片
+                const filter = this.dataset.filter;
+                document.querySelectorAll('.weapon-card').forEach(card => {
+                    if (filter === 'all' || card.dataset.category === filter) {
+                        card.classList.remove('hidden');
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,852 @@
+[
+  {
+    "name": "经典",
+    "slug": "classic",
+    "category": "sidearm",
+    "type": "随身武器",
+    "price": 0,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/classic.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "免费",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "78",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "26",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "6.75",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "12",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "短炮",
+    "slug": "shorty",
+    "category": "sidearm",
+    "type": "随身武器",
+    "price": 150,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/shorty.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "150",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "24×12",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "12×12",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "3.3",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "2",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "狂弑",
+    "slug": "frenzy",
+    "category": "sidearm",
+    "type": "随身武器",
+    "price": 450,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/frenzy.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "450",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "78",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "26",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "10",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "13",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "鬼魅",
+    "slug": "ghost",
+    "category": "sidearm",
+    "type": "随身武器",
+    "price": 500,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/ghost.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "500",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "105",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "30",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "6.75",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "15",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "正义",
+    "slug": "sheriff",
+    "category": "sidearm",
+    "type": "随身武器",
+    "price": 800,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/sheriff.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "800",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "159",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "55",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "4",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "6",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "蜂刺",
+    "slug": "stinger",
+    "category": "smg",
+    "type": "冲锋枪",
+    "price": 950,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/stinger.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "950",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "67",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "27",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "18",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "20",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "骇灵",
+    "slug": "spectre",
+    "category": "smg",
+    "type": "冲锋枪",
+    "price": 1600,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/spectre.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "1600",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "78",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "26",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "13.33",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "30",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "雄鹿",
+    "slug": "bucky",
+    "category": "shotgun",
+    "type": "霰弹枪",
+    "price": 850,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/bucky.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "850",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "40×15",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "20×15",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "1.1",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "5",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "判官",
+    "slug": "judge",
+    "category": "shotgun",
+    "type": "霰弹枪",
+    "price": 1850,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/judge.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "1850",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "34×12",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "17×12",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "3.5",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "7",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "獠犬",
+    "slug": "bulldog",
+    "category": "rifle",
+    "type": "步枪",
+    "price": 2050,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/bulldog.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "2050",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "115",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "35",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "9.15",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "24",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "戍卫",
+    "slug": "guardian",
+    "category": "rifle",
+    "type": "步枪",
+    "price": 2250,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/guardian.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "2250",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "195",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "65",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "5.25",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "12",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "幻象",
+    "slug": "phantom",
+    "category": "rifle",
+    "type": "步枪",
+    "price": 2900,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/phantom.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "2900",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "140",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "35",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "11",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "30",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "暴徒",
+    "slug": "vandal",
+    "category": "rifle",
+    "type": "步枪",
+    "price": 2900,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/vandal.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "2900",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "160",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "40",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "9.75",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "25",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "飞将",
+    "slug": "marshal",
+    "category": "sniper",
+    "type": "狙击枪",
+    "price": 950,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/marshal.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "950",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "202",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "101",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "1.5",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "5",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "间谍",
+    "slug": "operator",
+    "category": "sniper",
+    "type": "狙击枪",
+    "price": 4700,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/operator.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "4700",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "255",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "150",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "0.6",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "5",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "战神",
+    "slug": "ares",
+    "category": "heavy",
+    "type": "重型武器",
+    "price": 1600,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/ares.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "1600",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "72",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "30",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "10",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "50",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  },
+  {
+    "name": "奥丁",
+    "slug": "odin",
+    "category": "heavy",
+    "type": "重型武器",
+    "price": 3200,
+    "image": "https://ajaxgodlike.github.io/Valorant/images/weapons/odin.png",
+    "properties_data": [
+      {
+        "name": "价格",
+        "value": "3200",
+        "change": "-"
+      },
+      {
+        "name": "伤害(头)",
+        "value": "95",
+        "change": "-"
+      },
+      {
+        "name": "伤害(身)",
+        "value": "38",
+        "change": "-"
+      },
+      {
+        "name": "射速",
+        "value": "12",
+        "change": "-"
+      },
+      {
+        "name": "弹匣",
+        "value": "100",
+        "change": "-"
+      },
+      {
+        "name": "默认通道",
+        "value": "1-4",
+        "change": "-"
+      },
+      {
+        "name": "导入类型",
+        "value": "开镜默认压枪",
+        "change": "-"
+      },
+      {
+        "name": "来源",
+        "value": "VAL武器页",
+        "change": "-"
+      }
+    ]
+  }
+]

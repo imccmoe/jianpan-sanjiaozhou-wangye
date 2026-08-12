@@ -1,0 +1,14 @@
+{
+  "name": "wy-zfq-config-hub",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx wrangler pages dev public --compatibility-date=2026-08-12",
+    "preview": "npx wrangler pages dev public --compatibility-date=2026-08-12",
+    "start": "npx wrangler pages dev public --compatibility-date=2026-08-12"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

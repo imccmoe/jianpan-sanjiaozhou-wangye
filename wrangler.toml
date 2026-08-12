@@ -1,0 +1,8 @@
+name = "wy-zfq-config-hub"
+compatibility_date = "2026-08-12"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wy-zfq-config-hub"
+database_id = "replace-with-cloudflare-d1-id"
