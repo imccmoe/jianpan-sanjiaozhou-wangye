@@ -1,948 +1,581 @@
-if (typeof window === "undefined" || typeof document === "undefined") {
-  console.log("public/app.js 是浏览器端脚本，请通过本地网页服务打开。");
-  console.log("推荐命令：python -m http.server 8788 --directory public");
-  console.log("然后访问：http://localhost:8788");
-  if (typeof process !== "undefined") process.exit(0);
-}
+import { compileSong, crc32, formatDuration, startPreview, stopPreview } from "./music-engine.js";
+import { MusicHidDevice, requestBootloader, uploadFirmware, webHidSupported } from "./device.js";
 
-const games = [
-  { id: "delta", name: "三角洲行动", subtitle: "改枪码 / 枪械方案 / 转发器配置" },
-  { id: "pubg", name: "PUBG", subtitle: "开镜压枪方案" },
-  { id: "valorant", name: "无畏契约", subtitle: "多通道枪械配置" },
-  { id: "calabiyau", name: "卡拉比丘", subtitle: "待扩展配置库" }
+const APP_VERSION = "1.05";
+const PLANET_POSITIONS = [
+  [54, 70, 1.18], [30, 35, 0.72], [62, 22, 0.66], [76, 42, 0.72], [20, 58, 0.55],
+  [45, 44, 0.82], [70, 70, 0.9], [84, 61, 0.55], [36, 70, 0.62], [16, 31, 0.56],
+  [87, 28, 0.68], [43, 18, 0.58], [25, 78, 0.7], [59, 51, 0.6], [72, 18, 0.58],
+  [12, 70, 0.54], [92, 76, 0.55], [33, 18, 0.52], [51, 83, 0.56], [81, 82, 0.58],
 ];
-
-const deltaModes = [
-  { id: "warfare", name: "全面战场" },
-  { id: "operations", name: "烽火地带" }
+const PLANET_COLORS = ["#86ddd4", "#aeb9e7", "#f2aab3", "#8fd4cb", "#9fd9f1", "#d8bb75"];
+const KEY_OPTIONS = [
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((key) => [key, key]),
+  ["Space", "Space"], ["Enter", "Enter"], ["Esc", "Esc"], ["Tab", "Tab"],
+  ["↑", "Up"], ["↓", "Down"], ["←", "Left"], ["→", "Right"],
+  ...Array.from({ length: 12 }, (_, index) => [`F${index + 1}`, `F${index + 1}`]),
 ];
-
-let schemes = [
-  {
-    id: "delta-m4a1-ops-001",
-    game: "delta",
-    mode: "operations",
-    weapon: "M4A1",
-    type: "突击步枪",
-    ammo: "5.56x45mm",
-    map: "航天基地",
-    value: 625000,
-    price: 138000,
-    users: 2842,
-    likes: 428,
-    author: "DeltaLab",
-    status: "active",
-    code: "M4A1-OPS-7H2K-9QPM",
-    sensitivity: "全局 38 / 开镜 31 / 垂直 0.92",
-    config: "profile=m4a1;mode=ads;pull=31;interval=9;curve=stable",
-    params: { control: 77, stability: 71, hip: 62, range: 58, ads: 226, recoil: "31", interval: "9ms", scope: "1x/2x" },
-    feedback: { invalid: 2, inaccurate: 5, good: 126, weak: 9 }
-  },
-  {
-    id: "delta-akm-ops-001",
-    game: "delta",
-    mode: "operations",
-    weapon: "AKM",
-    type: "突击步枪",
-    ammo: "7.62x39mm",
-    map: "零号大坝",
-    value: 486000,
-    price: 92000,
-    users: 1920,
-    likes: 236,
-    author: "北山仓库",
-    status: "active",
-    code: "AKM-OPS-5L8A-2KQ7",
-    sensitivity: "全局 35 / 开镜 28 / 垂直 1.05",
-    config: "profile=akm;mode=ads;pull=38;interval=10;curve=heavy",
-    params: { control: 68, stability: 64, hip: 54, range: 63, ads: 251, recoil: "38", interval: "10ms", scope: "1x" },
-    feedback: { invalid: 6, inaccurate: 11, good: 88, weak: 16 }
-  },
-  {
-    id: "delta-scarh-ops-001",
-    game: "delta",
-    mode: "operations",
-    weapon: "SCAR-H",
-    type: "战斗步枪",
-    ammo: "7.62x51mm",
-    map: "长弓溪谷",
-    value: 768000,
-    price: 166000,
-    users: 3215,
-    likes: 516,
-    author: "方案编辑组",
-    status: "active",
-    code: "SCARH-OPS-4P6N-X120",
-    sensitivity: "全局 40 / 开镜 32 / 垂直 0.98",
-    config: "profile=scarh;mode=ads;pull=34;interval=11;curve=burst",
-    params: { control: 82, stability: 74, hip: 49, range: 79, ads: 286, recoil: "34", interval: "11ms", scope: "2x/3x" },
-    feedback: { invalid: 1, inaccurate: 3, good: 163, weak: 4 }
-  },
-  {
-    id: "delta-m7-warfare-001",
-    game: "delta",
-    mode: "warfare",
-    weapon: "M7",
-    type: "突击步枪",
-    ammo: "6.8x51mm",
-    map: "攀升",
-    value: 0,
-    price: 0,
-    users: 2440,
-    likes: 309,
-    author: "战场模板",
-    status: "active",
-    code: "M7-WAR-8J3P-QT20",
-    sensitivity: "全局 39 / 开镜 30 / 垂直 1.00",
-    config: "profile=m7;mode=ads;pull=33;interval=10;curve=mid",
-    params: { control: 74, stability: 69, hip: 57, range: 70, ads: 242, recoil: "33", interval: "10ms", scope: "1x/2x" },
-    feedback: { invalid: 2, inaccurate: 4, good: 91, weak: 8 }
-  },
-  {
-    id: "delta-vector-ops-001",
-    game: "delta",
-    mode: "operations",
-    weapon: "Vector",
-    type: "冲锋枪",
-    ammo: ".45 ACP",
-    map: "巴克什",
-    value: 352000,
-    price: 74000,
-    users: 1688,
-    likes: 191,
-    author: "近战优先",
-    status: "active",
-    code: "VECTOR-OPS-CQB-45A",
-    sensitivity: "全局 42 / 开镜 34 / 垂直 0.88",
-    config: "profile=vector;mode=ads;pull=24;interval=6;curve=fast",
-    params: { control: 61, stability: 59, hip: 82, range: 37, ads: 188, recoil: "24", interval: "6ms", scope: "1x" },
-    feedback: { invalid: 4, inaccurate: 8, good: 72, weak: 12 }
-  },
-  {
-    id: "delta-sr25-ops-001",
-    game: "delta",
-    mode: "operations",
-    weapon: "SR-25",
-    type: "射手步枪",
-    ammo: "7.62x51mm",
-    map: "航天基地",
-    value: 840000,
-    price: 214000,
-    users: 1106,
-    likes: 153,
-    author: "远点架枪",
-    status: "active",
-    code: "SR25-OPS-DMR-762",
-    sensitivity: "全局 36 / 开镜 26 / 垂直 1.12",
-    config: "profile=sr25;mode=tap;pull=19;interval=18;curve=single",
-    params: { control: 88, stability: 81, hip: 32, range: 91, ads: 318, recoil: "19", interval: "18ms", scope: "4x/6x" },
-    feedback: { invalid: 0, inaccurate: 2, good: 66, weak: 3 }
-  },
-  {
-    id: "valorant-vandal-001",
-    game: "valorant",
-    mode: "standard",
-    weapon: "Vandal",
-    type: "步枪",
-    ammo: "N/A",
-    map: "任意",
-    value: 0,
-    price: 2900,
-    users: 1398,
-    likes: 77,
-    author: "ChannelOps",
-    status: "active",
-    code: "VAL-VANDAL-CH1-BASE",
-    sensitivity: "鼠标 0.31 / ADS 1.0",
-    config: "channel=1;weapon=vandal;burst=6;pull=18;interval=12",
-    params: { control: 60, stability: 65, hip: 50, range: 55, ads: 0, recoil: "18", interval: "12ms", scope: "ADS" },
-    feedback: { invalid: 0, inaccurate: 4, good: 77, weak: 5 }
-  },
-  {
-    id: "pubg-m416-001",
-    game: "pubg",
-    mode: "standard",
-    weapon: "M416",
-    type: "突击步枪",
-    ammo: "5.56mm",
-    map: "任意",
-    value: 0,
-    price: 0,
-    users: 906,
-    likes: 51,
-    author: "PUBGBase",
-    status: "active",
-    code: "PUBG-M416-ADS-35",
-    sensitivity: "常规 42 / 垂直 1.0 / 3倍 32",
-    config: "profile=m416;scope=3x;pull=35;interval=8",
-    params: { control: 70, stability: 70, hip: 52, range: 61, ads: 0, recoil: "35", interval: "8ms", scope: "1x/3x" },
-    feedback: { invalid: 3, inaccurate: 6, good: 51, weak: 7 }
-  }
+const DEFAULT_MAPPINGS = [
+  { mode: "single", modifiers: [], key: "A" },
+  { mode: "single", modifiers: [], key: "Space" },
+  { mode: "single", modifiers: [], key: "Enter" },
 ];
 
 const state = {
-  user: JSON.parse(localStorage.getItem("zfq_user") || "null"),
-  game: "delta",
-  deltaMode: "operations",
-  search: "",
-  weapon: "all",
-  weaponName: "all",
-  pickerOpen: false,
-  pickerCategory: "all",
-  ammo: "all",
-  value: "all",
-  sort: "popular",
-  page: 1,
-  pageSize: 24,
-  selected: null,
-  channel: 1,
   view: "library",
-  adminCategory: "submissions"
+  libraryMode: "planet",
+  search: "",
+  songs: [],
+  selectedSongId: null,
+  slotSongIds: readStorage("gxm_library_slots", [null, null, null]),
+  previewSongId: null,
+  mappingSlot: 0,
+  mappings: readStorage("gxm_key_mappings", DEFAULT_MAPPINGS),
+  devices: [],
+  device: {
+    connected: false,
+    label: webHidSupported ? "未发现 GXM 键盘" : "浏览器不支持 WebHID",
+    validMask: 0,
+    keyMask: null,
+    playing: false,
+    activeSlot: -1,
+    firmwareVersion: 0,
+  },
+  uploadingSlot: -1,
+  uploadPercent: 0,
+  firmware: null,
+  upgrading: false,
 };
 
-async function loadSchemes() {
+const hid = new MusicHidDevice(() => {
+  state.device = { ...state.device, connected: false, label: "设备已断开", keyMask: null, playing: false };
+  render();
+});
+let toastTimer = 0;
+let statusTimer = 0;
+
+function readStorage(key, fallback) {
   try {
-    const response = await fetch("./data/schemes.json", { cache: "no-store" });
-    if (!response.ok) return;
-    const data = await response.json();
-    if (Array.isArray(data) && data.length > 0) {
-      schemes = data;
-    }
-  } catch (error) {
-    console.warn("本地方案数据加载失败，使用内置示例数据。", error);
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return Array.isArray(value) && value.length === 3 ? value : structuredClone(fallback);
+  } catch {
+    return structuredClone(fallback);
   }
 }
 
-function saveUser(user) {
-  state.user = user;
-  localStorage.setItem("zfq_user", JSON.stringify(user));
+function persist() {
+  localStorage.setItem("gxm_library_slots", JSON.stringify(state.slotSongIds));
+  localStorage.setItem("gxm_key_mappings", JSON.stringify(state.mappings));
 }
 
-function visitCount() {
-  const count = Number(localStorage.getItem("zfq_visits") || "0") + 1;
-  localStorage.setItem("zfq_visits", String(count));
-  return count;
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function needsCaptcha() {
-  return Number(localStorage.getItem("zfq_visits") || "0") >= 3;
+function showToast(message, type = "info") {
+  document.querySelector(".toast")?.remove();
+  window.clearTimeout(toastTimer);
+  const node = document.createElement("div");
+  node.className = `toast ${type}`;
+  node.textContent = message;
+  document.body.appendChild(node);
+  toastTimer = window.setTimeout(() => node.remove(), 3200);
 }
 
-function money(value) {
-  if (!value) return "-";
-  if (value >= 10000) return `${Math.round(value / 10000)}万`;
-  return String(value);
+function filteredSongs() {
+  const query = state.search.trim().toLowerCase();
+  if (!query) return state.songs;
+  return state.songs.filter((song) => `${song.title} ${song.author} ${song.difficulty} ${song.source}`.toLowerCase().includes(query));
 }
 
-function exactMoney(value) {
-  if (!value) return "-";
-  return Number(value).toLocaleString("zh-CN");
+function selectedSong() {
+  const visible = filteredSongs();
+  return visible.find((song) => song.id === state.selectedSongId) || visible[0] || null;
 }
 
-function activeSchemes() {
-  return schemes.filter((item) => item.game === state.game && item.status === "active");
+function slotSong(slot) {
+  return state.songs.find((song) => song.id === state.slotSongIds[slot]) || null;
 }
 
-function filteredSchemes() {
-  let items = activeSchemes();
-
-  if (state.game === "delta") {
-    items = items.filter((item) => item.mode === state.deltaMode);
-  }
-
-  if (state.search) {
-    const keyword = state.search.toLowerCase();
-    items = items.filter((item) => `${item.weapon} ${item.objectName || ""} ${item.type} ${item.ammo} ${item.map} ${item.code}`.toLowerCase().includes(keyword));
-  }
-
-  if (state.weapon !== "all") items = items.filter((item) => item.type === state.weapon);
-  if (state.weaponName !== "all") items = items.filter((item) => (item.objectName || item.weapon) === state.weaponName);
-  if (state.ammo !== "all") items = items.filter((item) => item.ammo === state.ammo);
-
-  if (state.value !== "all") {
-    items = items.filter((item) => {
-      if (state.value === "p10") return item.price > 0 && item.price < 150000;
-      if (state.value === "p20") return item.price >= 150000 && item.price < 250000;
-      if (state.value === "p30") return item.price >= 250000 && item.price < 350000;
-      if (state.value === "p40") return item.price >= 350000 && item.price < 450000;
-      return item.price >= 500000;
-    });
-  }
-
-  return items.sort((a, b) => {
-    if (state.sort === "priceAsc") return a.price - b.price;
-    if (state.sort === "priceDesc") return b.price - a.price;
-    if (state.sort === "valueDesc") return b.value - a.value;
-    if (state.sort === "likes") return b.likes - a.likes;
-    return b.users - a.users;
-  });
+function sourceTag(song) {
+  if (song.source.includes("参考1/")) return "参考1";
+  if (song.source.includes("参考2/")) return "参考2";
+  return "内置";
 }
 
-function paged(items) {
-  const start = (state.page - 1) * state.pageSize;
-  return items.slice(start, start + state.pageSize);
+function mappingText(mapping) {
+  const parts = mapping.mode === "combo" ? [...mapping.modifiers] : [];
+  parts.push(mapping.key);
+  return parts.join(" + ");
 }
 
-function mountLogin() {
-  visitCount();
-  const mustVerify = needsCaptcha();
-  document.querySelector("#app").innerHTML = `
-    <main class="login">
-      <section class="login-panel">
-        <h1>转发器配置方案库</h1>
-        <p>游客可直接测试浏览与导入流程。频繁访问时会触发人机验证，后续可替换为 Cloudflare Turnstile。</p>
-        <div class="field">
-          <label for="username">账号</label>
-          <input id="username" placeholder="测试阶段可留空" />
+function footerText() {
+  if (state.view === "mapping") return "键位配置仅保存在本次预览中 · 设备写入将在固件支持后开放";
+  if (state.view === "device") return "设备维护 · 查看按键状态并在需要时更新固件";
+  if (state.view === "about") return `GXM 音乐键盘 ${APP_VERSION}`;
+  return "准备就绪 · 把音乐星球拖到 K1～K3，然后直接保存到键盘";
+}
+
+function render() {
+  const app = document.querySelector("#app");
+  app.innerHTML = `
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block"><strong>GXM</strong><span>把喜欢的音乐装进键盘</span></div>
+        <div class="device-controls">
+          <label for="device-select">我的设备</label>
+          <select id="device-select" aria-label="我的设备">
+            ${state.devices.length
+              ? state.devices.map((device, index) => `<option value="${index}">${escapeHtml(device.productName || "GXM 键盘")}</option>`).join("")
+              : `<option>${escapeHtml(state.device.label)}</option>`}
+          </select>
+          <button class="button" data-action="scan-device">重新检测</button>
+          <button class="button primary" data-action="connect-device">连接</button>
+          <span class="device-state ${state.device.connected ? "online" : ""}">${state.device.connected ? "已连接" : "未连接"}</span>
         </div>
-        <div class="field">
-          <label for="password">密码</label>
-          <input id="password" type="password" placeholder="测试阶段可留空" />
-        </div>
-        ${
-          mustVerify
-            ? `<label class="captcha"><input id="captcha" type="checkbox" /> 我已完成人机验证</label>`
-            : `<div class="notice">当前可直接游客登录。第 3 次访问后会显示验证步骤。</div>`
-        }
-        <div class="actions">
-          <button class="btn" id="guestLogin">游客登录</button>
-          <button class="btn secondary" id="accountLogin">账号登录</button>
-        </div>
-      </section>
-    </main>
-  `;
-
-  document.querySelector("#guestLogin").addEventListener("click", () => {
-    if (mustVerify && !document.querySelector("#captcha").checked) return toast("请先完成人机验证");
-    saveUser({ id: `guest-${Date.now()}`, name: "游客", role: "guest" });
-    renderApp();
-  });
-
-  document.querySelector("#accountLogin").addEventListener("click", () => {
-    if (mustVerify && !document.querySelector("#captcha").checked) return toast("请先完成人机验证");
-    const name = document.querySelector("#username").value.trim() || "测试用户";
-    saveUser({ id: `user-${Date.now()}`, name, role: "user" });
-    renderApp();
-  });
+      </header>
+      <nav class="main-tabs" aria-label="主功能">
+        ${[["library", "音乐星球"], ["mapping", "键位设置"], ["device", "设备维护"], ["about", "关于"]]
+          .map(([id, label]) => `<button class="main-tab ${state.view === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("")}
+      </nav>
+      <main class="page">${renderPage()}</main>
+      <footer>${escapeHtml(footerText())}</footer>
+    </div>`;
+  bindEvents();
 }
 
-function renderApp() {
-  if (!state.user) return mountLogin();
-
-  if (!state.selected || state.selected.game !== state.game) {
-    state.selected = activeSchemes()[0] || null;
-  }
-
-  const game = games.find((item) => item.id === state.game);
-  document.querySelector("#app").innerHTML = `
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">Z</div>
-          <div>
-            <h1>配置方案库</h1>
-            <p>Pages + Worker 范本</p>
-          </div>
-        </div>
-        <nav class="nav">
-          <button data-view="library" class="${state.view === "library" ? "active" : ""}">方案库</button>
-          <button data-view="submit" class="${state.view === "submit" ? "active" : ""}">上传方案</button>
-          <button data-view="admin" class="${state.view === "admin" ? "active" : ""}">后台审核</button>
-        </nav>
-        <div class="userbox">
-          <strong>${state.user.name}</strong>
-          <p>${state.user.role === "guest" ? "游客模式" : "账号模式"}</p>
-          <button class="btn ghost" id="logout">退出登录</button>
-        </div>
-      </aside>
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <h2>${game.name}</h2>
-            <span>${game.subtitle}</span>
-          </div>
-          <div class="actions">
-            <button class="btn secondary" id="copyCurrent">复制当前改枪码</button>
-            <button class="btn" id="importCurrent">导入当前配置</button>
-          </div>
-        </header>
-        <section class="content">
-          ${renderGameTabs()}
-          ${state.view === "library" ? renderLibrary() : ""}
-          ${state.view === "submit" ? renderSubmit() : ""}
-          ${state.view === "admin" ? renderAdmin() : ""}
-          ${state.pickerOpen ? renderWeaponPicker() : ""}
-        </section>
-      </main>
-    </div>
-  `;
-
-  bindAppEvents();
+function renderPage() {
+  if (state.view === "mapping") return renderMapping();
+  if (state.view === "device") return renderDevice();
+  if (state.view === "about") return renderAbout();
+  return renderLibrary();
 }
 
-function renderGameTabs() {
-  return `
-    <div class="tabs">
-      ${games.map((game) => `<button class="tab ${state.game === game.id ? "active" : ""}" data-game="${game.id}">${game.name}</button>`).join("")}
-    </div>
-  `;
+function pageHeading(eyebrow, title, subtitle, aside = "") {
+  return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1><p>${subtitle}</p></div>${aside}</div>`;
 }
 
 function renderLibrary() {
-  const items = filteredSchemes();
-  const pages = Math.max(1, Math.ceil(items.length / state.pageSize));
-  if (state.page > pages) state.page = pages;
+  const songs = filteredSongs();
+  const song = selectedSong();
+  const shown = Math.min(songs.length, 20);
+  const switches = `<div class="view-switch" role="group"><button class="${state.libraryMode === "planet" ? "active" : ""}" data-library-mode="planet">星球视图</button><button class="${state.libraryMode === "list" ? "active" : ""}" data-library-mode="list">全部音乐&nbsp; ${songs.length}</button><button class="button" data-action="reload-library">重新加载</button></div>`;
   return `
-    ${state.game === "delta" ? renderDeltaHero(items.length) : ""}
-    <div class="toolbar">
-      <input class="search" id="search" value="${state.search}" placeholder="搜索枪械、弹药、地图或改枪码" />
-      ${state.game === "delta" ? renderDeltaFilters() : ""}
-      ${state.game === "valorant" ? renderValorantFilters() : ""}
+    ${pageHeading("发现音乐", "音乐星球", "像浏览星空一样选歌。单击查看，双击试听，也可以直接拖到 K1～K3。", switches)}
+    <section class="search-strip"><strong>查找星球</strong><input id="song-search" value="${escapeHtml(state.search)}" placeholder="搜索歌名、作者或难度" /><span>${state.libraryMode === "planet" ? `星球展示 ${shown} / ${songs.length} 首` : `全部 ${songs.length} 首音乐`}</span></section>
+    <div class="library-stage">
+      ${state.libraryMode === "planet" ? renderPlanet(songs.slice(0, 20)) : renderSongList(songs)}
+      ${renderSongDetail(song)}
     </div>
-    <div class="board">
-      <section>
-        <div class="result-head">
-          <strong>共 ${items.length} 个方案</strong>
-          <span>当前第 ${state.page} / ${pages} 页</span>
-        </div>
-        <div class="grid">
-          ${paged(items).map(renderCard).join("") || `<div class="notice">暂无符合条件的方案</div>`}
-        </div>
-        <div class="pager">
-          <button class="btn secondary" id="prevPage" ${state.page <= 1 ? "disabled" : ""}>上一页</button>
-          <button class="btn secondary" id="nextPage" ${state.page >= pages ? "disabled" : ""}>下一页</button>
-        </div>
+    <div class="slot-heading"><strong>拖到你的键盘</strong><span>把歌曲拖到 K1～K3，确认后直接点击对应的保存按钮。</span></div>
+    <section class="slot-row">${[0, 1, 2].map(renderSlot).join("")}</section>`;
+}
+
+function renderPlanet(songs) {
+  if (!songs.length) return `<div class="planet empty-state">没有找到匹配的音乐</div>`;
+  return `<div class="planet" aria-label="音乐星球">${songs.map((song, index) => {
+    const [x, y, scale] = PLANET_POSITIONS[index];
+    const active = song.id === selectedSong()?.id;
+    return `<button class="planet-song ${active ? "active" : ""}" draggable="true" data-song-id="${escapeHtml(song.id)}" style="--x:${x}%;--y:${y}%;--scale:${scale};--color:${PLANET_COLORS[index % PLANET_COLORS.length]};--delay:${-(index % 7)}s"><i></i><span>${escapeHtml(song.title)}</span></button>`;
+  }).join("")}</div>`;
+}
+
+function renderSongList(songs) {
+  if (!songs.length) return `<div class="song-list empty-state">没有找到匹配的音乐</div>`;
+  return `<div class="song-list">${songs.map((song) => `<button class="song-list-item ${song.id === selectedSong()?.id ? "active" : ""}" draggable="true" data-song-id="${escapeHtml(song.id)}"><strong>${escapeHtml(song.title)}</strong><span>${escapeHtml(song.author)} · ${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${sourceTag(song)} · ${song.game_verified ? "实机通过" : "待实机"}</span></button>`).join("")}</div>`;
+}
+
+function renderSongDetail(song) {
+  if (!song) return `<aside class="song-detail"><span class="detail-eyebrow">当前星球</span><h2>选择一颗音乐星球</h2><p>单击查看，双击可以直接试听。</p><span class="status-chip">等待选择</span><button class="preview-button" disabled>试听</button></aside>`;
+  return `<aside class="song-detail">
+    <span class="detail-eyebrow">当前星球</span>
+    <h2>${escapeHtml(song.title)}</h2>
+    <p>${escapeHtml(song.author)}</p>
+    <p>${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${formatDuration(song.compiled.durationMs)}<br>${state.libraryMode === "planet" ? "按住星球拖到下方键位即可选中。" : "从列表拖到下方键位，双击可以直接试听。"}</p>
+    <span class="status-chip">已适配</span>
+    <button class="preview-button" data-action="preview-song" data-song-id="${escapeHtml(song.id)}">${state.previewSongId === song.id ? "停止" : "试听"}</button>
+  </aside>`;
+}
+
+function renderSlot(slot) {
+  const song = slotSong(slot);
+  const uploading = state.uploadingSlot === slot;
+  return `<article class="slot-target ${song ? "filled" : ""}" data-slot="${slot}">
+    <span class="slot-badge">K${slot + 1}</span>
+    <div><strong>${escapeHtml(song?.title || "拖到这里")}</strong><small>${song ? "拖入后点击右侧保存" : "拖入后点击右侧保存"}</small></div>
+    <button class="save-button" data-action="save-slot" data-slot="${slot}" ${song && !state.upgrading ? "" : "disabled"}>${uploading ? `写入 ${state.uploadPercent}%` : `保存到 K${slot + 1}`}</button>
+  </article>`;
+}
+
+function renderMapping() {
+  const mapping = state.mappings[state.mappingSlot];
+  return `
+    ${pageHeading("键盘模式", "键位设置", "为三颗实体按键设计单键或组合键，先在这里完成你的键盘布局。", `<span class="preview-chip">UI 预览</span>`)}
+    <section class="keyboard-deck"><div><strong>GXM 三键键盘</strong><span>选择一颗键帽进行设置</span></div>${state.mappings.map((item, slot) => `<button class="keycap ${state.mappingSlot === slot ? "active" : ""}" data-mapping-slot="${slot}"><b>K${slot + 1}</b><span>${escapeHtml(mappingText(item))}</span></button>`).join("")}</section>
+    <div class="mapping-layout">
+      <section class="mapping-editor">
+        <div class="section-heading"><h2>编辑 K${state.mappingSlot + 1}</h2><span>修改会暂存在本次配置中</span></div>
+        <div class="form-row"><label>触发方式</label><div class="segmented"><button class="${mapping.mode === "single" ? "active" : ""}" data-map-mode="single">单键</button><button class="${mapping.mode === "combo" ? "active" : ""}" data-map-mode="combo">组合键</button></div></div>
+        <div class="form-row"><label>修饰键</label><div class="modifier-row">${["Ctrl", "Shift", "Alt", "Win"].map((name) => `<label><input type="checkbox" data-modifier="${name}" ${mapping.modifiers.includes(name) ? "checked" : ""} ${mapping.mode === "single" ? "disabled" : ""}> ${name}</label>`).join("")}</div></div>
+        <div class="form-row"><label for="key-capture">按键录入</label><div class="key-entry"><input id="key-capture" value="${escapeHtml(mappingText(mapping))}" readonly><select id="key-select">${KEY_OPTIONS.map(([label, value]) => `<option value="${value}" ${mapping.key === value ? "selected" : ""}>${label}</option>`).join("")}</select></div></div>
+        <div class="output-box"><span>最终输出</span><strong>${escapeHtml(mappingText(mapping))}</strong></div>
+        <div class="editor-actions"><button class="button" data-action="reset-mapping">恢复默认</button><button class="button primary" data-action="apply-mapping">应用到当前键位</button></div>
       </section>
-      ${renderSidePanel()}
-    </div>
-  `;
+      <aside class="mapping-summary">
+        <h2>当前键盘布局</h2><p>三个键位会分别保留设置</p>
+        ${state.mappings.map((item, slot) => `<div class="summary-row"><span>K${slot + 1}</span><strong>${escapeHtml(mappingText(item))}</strong></div>`).join("")}
+        <div class="write-state"><span>设备写入</span><b>等待固件支持</b></div>
+        <button class="button" disabled>写入键盘</button>
+      </aside>
+    </div>`;
 }
 
-function renderDeltaHero(total) {
+function renderDevice() {
+  const firmware = state.firmware;
   return `
-    <section class="delta-hero">
-      <div>
-        <h3>三角洲改枪码方案</h3>
-        <p>按模式、枪械、弹药、价值和价格筛选，复制改枪码后可导入对应转发器配置。</p>
-      </div>
-      <div class="mode-tabs">
-        ${deltaModes.map((mode) => `<button class="${state.deltaMode === mode.id ? "active" : ""}" data-delta-mode="${mode.id}">${mode.name}</button>`).join("")}
-      </div>
-      <div class="hero-stat"><strong>${total}</strong><span>当前结果</span></div>
-    </section>
-  `;
+    ${pageHeading("设备与支持", "设备维护", "查看实体按键状态，或在需要时更新键盘固件。")}
+    <fieldset class="key-status"><legend>键盘按键状态</legend>${[0, 1, 2].map((slot) => {
+      const pressed = state.device.connected && Boolean(state.device.keyMask & (1 << slot));
+      return `<div class="${pressed ? "pressed" : ""}"><strong>K${slot + 1}</strong><span>${state.device.connected ? (pressed ? "按下" : "松开") : "未连接"}</span></div>`;
+    }).join("")}</fieldset>
+    <section class="firmware-card">
+      <h2>固件更新</h2><p>更新不会清除 K1～K3 中的音乐。升级中途断开时，可以重新选择同一文件继续。</p>
+      <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择更新文件"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".hex,text/plain"></label></div>
+      <div class="progress"><span style="width:${firmware?.progress || 0}%"></span></div>
+      <button class="button primary update-button" data-action="start-update" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : "开始更新"}</button>
+      <pre class="upgrade-log">${escapeHtml(firmware?.log?.join("\n") || "更新过程会显示在这里")}</pre>
+    </section>`;
 }
 
-function renderDeltaFilters() {
-  const deltaItems = schemes.filter((item) => item.game === "delta" && item.mode === state.deltaMode);
-  const ammoTypes = ["all", ...new Set(deltaItems.map((item) => item.ammo))];
+function renderAbout() {
   return `
-    <div class="delta-filter-bar">
-      <button class="filter-trigger" id="openWeaponPicker">${weaponFilterLabel()}</button>
-      <div class="price-menu">
-        <button class="filter-trigger">${priceFilterLabel()}</button>
-        <div class="price-dropdown">
-          ${[
-            ["all", "全部价格"],
-            ["p10", "10w左右"],
-            ["p20", "20w左右"],
-            ["p30", "30w左右"],
-            ["p40", "40w左右"],
-            ["p50", "50w以上"]
-          ].map(([value, label]) => `<button class="${state.value === value ? "active" : ""}" data-price-filter="${value}">${label}</button>`).join("")}
-        </div>
-      </div>
-      <label class="compact-filter">弹药类型
-        <select id="ammoFilter">
-          ${ammoTypes.map((type) => `<option value="${type}" ${state.ammo === type ? "selected" : ""}>${type === "all" ? "全部" : type}</option>`).join("")}
-        </select>
-      </label>
-      <label class="compact-filter">排序
-        <select id="sortFilter">
-          <option value="popular" ${state.sort === "popular" ? "selected" : ""}>最多人用</option>
-          <option value="likes" ${state.sort === "likes" ? "selected" : ""}>最多点赞</option>
-          <option value="priceAsc" ${state.sort === "priceAsc" ? "selected" : ""}>价格升序</option>
-          <option value="priceDesc" ${state.sort === "priceDesc" ? "selected" : ""}>价格倒序</option>
-          <option value="valueDesc" ${state.sort === "valueDesc" ? "selected" : ""}>价值优先</option>
-        </select>
-      </label>
-    </div>
-  `;
+    ${pageHeading("ABOUT GXM", "关于 GXM 音乐键盘", "它如何工作，以及为什么正常的音乐演奏通常不具备外挂特征。")}
+    <section class="process-flow">${["本地乐谱", "GXM 芯片", "标准 USB HID", "游戏按键响应"].map((text, index) => `${index ? "<i>→</i>" : ""}<span>${text}</span>`).join("")}</section>
+    <section class="about-section"><h2>专业原理</h2><p>GXM 是一套独立运行的嵌入式 USB HID 音乐控制器。PC 端首先将简谱编译为带时间信息的 HID 事件序列，再通过设备通信接口写入微控制器的非易失存储器。按下 K1～K3 后，音乐播放和时序调度完全由设备端完成，并以标准键盘、鼠标 HID Report 的形式提交给操作系统。</p><p>它不申请游戏进程句柄，不读取或写入游戏内存，不注入 DLL，不修改游戏文件与网络数据，也不安装用于干预游戏的内核驱动。从系统边界看，游戏接收到的是操作系统输入栈中的标准外设事件，而不是进程内部被篡改的数据。</p></section>
+    <section class="about-section"><h2>用大白话讲</h2><p>它不像外挂那样“钻进游戏里”改东西，更像一把会照着乐谱自动按琴键的外置电子琴。歌曲存在键盘自己的芯片里，你按下 K1、K2 或 K3，它就像普通键盘一样把对应按键送给电脑；关闭 GXM 软件后，设备里的歌曲也可以独立播放。</p></section>
+    <section class="about-section caution"><h2>为什么正常演奏通常不会触发封禁</h2><p>反作弊系统重点识别的是代码注入、内存篡改、数据包修改、非法驱动和利用自动化获得竞技优势等行为。GXM 没有这些侵入式能力，它只通过标准外设通道完成音乐演奏，也不参与瞄准、移动、射击或战斗决策，因此在正常的乐器演奏场景下，通常不具备传统外挂的技术特征。</p><p>但必须说明：任何第三方硬件都不能代替游戏官方承诺“绝对不会封号”。游戏规则和反作弊策略可能更新，某些平台也可能把高精度自动输入统一视为宏。建议只用于游戏内乐器和娱乐演奏，不做无人值守循环，不绑定战斗操作，并始终遵守《三角洲行动》最新用户协议与官方公告。</p></section>`;
 }
 
-function weaponFilterLabel() {
-  if (state.weaponName !== "all") return state.weaponName;
-  if (state.weapon !== "all") return state.weapon;
-  return "选择枪械分类";
-}
-
-function priceFilterLabel() {
-  return {
-    all: "全部价格",
-    p10: "10w左右",
-    p20: "20w左右",
-    p30: "30w左右",
-    p40: "40w左右",
-    p50: "50w以上"
-  }[state.value] || "全部价格";
-}
-
-function renderWeaponPicker() {
-  const sourceItems = schemes.filter((item) => {
-    if (item.game !== state.game) return false;
-    return state.game !== "delta" || item.mode === state.deltaMode;
-  });
-  const categories = ["all", ...new Set(sourceItems.map((item) => item.type).filter(Boolean))];
-  const currentItems = state.pickerCategory === "all" ? sourceItems : sourceItems.filter((item) => item.type === state.pickerCategory);
-  const weapons = ["all", ...new Set(currentItems.map((item) => item.objectName || item.weapon).filter(Boolean))];
-  return `
-    <div class="picker-overlay" id="weaponPickerOverlay">
-      <section class="weapon-picker">
-        <header>
-          <strong>选择枪械分类</strong>
-          <button id="closeWeaponPicker">×</button>
-        </header>
-        <div class="weapon-picker-body">
-          <nav>
-            ${categories.map((category) => `<button class="${state.pickerCategory === category ? "active" : ""}" data-picker-category="${category}">${category === "all" ? "全部" : category}</button>`).join("")}
-          </nav>
-          <div class="weapon-list">
-            ${weapons.map((weapon) => `<button class="${state.weaponName === weapon || (weapon === "all" && state.weaponName === "all") ? "active" : ""}" data-picker-weapon="${weapon}">${weapon === "all" ? "全部" : weapon}</button>`).join("")}
-          </div>
-        </div>
-        <footer>
-          <button class="picker-cancel" id="cancelWeaponPicker">取消</button>
-          <button class="picker-confirm" id="confirmWeaponPicker">确认</button>
-        </footer>
-      </section>
-    </div>
-  `;
-}
-
-function renderValorantFilters() {
-  return `
-    <div class="valorant-filter-bar">
-      <button class="filter-trigger" id="openWeaponPicker">${weaponFilterLabel()}</button>
-      <label class="compact-filter">排序
-        <select id="sortFilter">
-          <option value="popular" ${state.sort === "popular" ? "selected" : ""}>最多人用</option>
-          <option value="likes" ${state.sort === "likes" ? "selected" : ""}>最多点赞</option>
-          <option value="priceAsc" ${state.sort === "priceAsc" ? "selected" : ""}>价格升序</option>
-          <option value="priceDesc" ${state.sort === "priceDesc" ? "selected" : ""}>价格倒序</option>
-        </select>
-      </label>
-      ${renderValorantChannels()}
-    </div>
-  `;
-}
-
-function renderValorantChannels() {
-  return `
-    <div class="channel-row">
-      ${[1, 2, 3, 4].map((channel) => `<button class="chip ${state.channel === channel ? "active" : ""}" data-channel="${channel}">通道 ${channel}</button>`).join("")}
-      <span class="meta">一局多枪械时可把不同枪械绑定到不同通道。</span>
-    </div>
-  `;
-}
-
-function renderCard(item) {
-  const total = item.feedback.invalid + item.feedback.good + item.feedback.inaccurate + item.feedback.weak;
-  const audit = feedbackAudit(item);
-  const subtitle = item.objectName || item.type || item.weapon;
-  return `
-    <article class="gqm-card ${state.selected?.id === item.id ? "selected" : ""}" data-select="${item.id}">
-      <div class="gqm-title">
-        <span class="star">★</span>
-        <strong>${item.weapon}</strong>
-      </div>
-      <div class="gqm-body">
-        <div class="gqm-subtitle">${subtitle}</div>
-        <div class="gqm-image-wrap">
-          ${item.image ? `<img class="gqm-image" src="${item.image}" alt="${item.weapon}" loading="lazy" />` : `<div class="gqm-image empty">暂无图片</div>`}
-        </div>
-        <div class="gqm-meta-line">
-          <span>作者: ${item.author || "未知"}</span>
-          <strong class="gqm-price">◉ ${exactMoney(item.price)}</strong>
-        </div>
-      </div>
-      <div class="gqm-stats">
-        ${renderStatCells(item)}
-      </div>
-      ${audit.flagged ? `<div class="gqm-warning">${audit.message}</div>` : ""}
-      <div class="gqm-actions">
-        <button data-copy="${item.id}">复制|改枪码</button>
-        <button data-import="${item.id}">导入配置</button>
-      </div>
-    </article>
-  `;
-}
-
-function renderStatCells(item) {
-  const rawProps = Array.isArray(item.raw?.properties_data) ? item.raw.properties_data : [];
-  const props = rawProps.length
-    ? rawProps.slice(0, 8)
-    : [
-        { name: "价格", value: money(item.price), change: "-" },
-        { name: "价值", value: money(item.value), change: "-" },
-        { name: "后座", value: item.params.recoil || "-", change: "-" },
-        { name: "操控", value: item.params.control || "-", change: "-" },
-        { name: "稳定性", value: item.params.stability || "-", change: "-" },
-        { name: "腰射", value: item.params.hip || "-", change: "-" },
-        { name: "射程", value: item.params.range || "-", change: "-" },
-        { name: "开镜", value: item.params.ads || "-", change: "-" }
-      ];
-
-  return props
-    .map((prop) => {
-      const change = prop.change === undefined || prop.change === "" ? "-" : prop.change;
-      const changeClass = String(change).startsWith("+") ? "up" : String(change).startsWith("-") && change !== "-" ? "down" : "";
-      return `
-        <div class="gqm-stat">
-          <span>${prop.name}</span>
-          <strong>${prop.value ?? "-"}</strong>
-          <em class="${changeClass}">${change}</em>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderSidePanel() {
-  const item = state.selected;
-  if (!item) return `<aside class="side-panel"><h3>配置详情</h3><p class="meta">请选择一个枪械方案。</p></aside>`;
-  const config = channelConfig(item);
-  return `
-    <aside class="side-panel">
-      <h3>${item.weapon} 方案详情</h3>
-      <div class="detail-row"><span>改枪码</span><strong>${item.code}</strong></div>
-      ${item.game === "valorant" ? `<div class="detail-row"><span>当前通道</span><strong>通道 ${state.channel}</strong></div>` : ""}
-      <div class="detail-row"><span>转发器配置</span><code>${config}</code></div>
-      <div class="detail-row"><span>灵敏度</span><strong>${item.sensitivity}</strong></div>
-      <div class="detail-row"><span>压枪参数</span><strong>${item.params.recoil} / ${item.params.interval} / ${item.params.scope}</strong></div>
-      <div class="feedback-row">
-        <button class="chip" data-feedback="invalid" ${hasVotedFeedback(item, "invalid") ? "disabled" : ""}>改枪码无效 ${item.feedback.invalid}</button>
-        <button class="chip" data-feedback="inaccurate" ${hasVotedFeedback(item, "inaccurate") ? "disabled" : ""}>数据不准 ${item.feedback.inaccurate}</button>
-        <button class="chip" data-feedback="good" ${hasVotedFeedback(item, "good") ? "disabled" : ""}>这个真棒 ${item.feedback.good}</button>
-        <button class="chip" data-feedback="weak" ${hasVotedFeedback(item, "weak") ? "disabled" : ""}>不太好用 ${item.feedback.weak}</button>
-      </div>
-      <div class="notice">${feedbackAudit(item).message}</div>
-    </aside>
-  `;
-}
-
-function renderSubmit() {
-  return `
-    <form class="toolbar" id="submitForm">
-      <div class="field"><label>游戏</label><select><option>三角洲行动</option><option>PUBG</option><option>无畏契约</option><option>卡拉比丘</option></select></div>
-      <div class="field"><label>枪械名称</label><input required placeholder="例如 M4A1" /></div>
-      <div class="field"><label>改枪码</label><input required placeholder="粘贴改枪码" /></div>
-      <div class="field"><label>转发器配置</label><input required placeholder="profile=m4a1;pull=31;interval=9" /></div>
-      <button class="btn" type="submit">提交审核</button>
-    </form>
-  `;
-}
-
-function renderAdmin() {
-  const categories = [
-    { id: "submissions", name: "他人提供的枪械审核" },
-    { id: "feedback", name: "反馈自动复核" },
-    { id: "reserved", name: "待定" }
-  ];
-  const rows = adminRows();
-  return `
-    <div class="admin-panel">
-      <div class="tabs">
-        ${categories.map((item) => `<button class="tab ${state.adminCategory === item.id ? "active" : ""}" data-admin-category="${item.id}">${item.name}</button>`).join("")}
-      </div>
-      <table class="admin-table">
-        <thead><tr><th>方案</th><th>分类</th><th>状态</th><th>审核原因</th><th>操作</th></tr></thead>
-        <tbody>
-          ${rows.map((item) => `
-            <tr>
-              <td>${item.weapon} / ${item.code}</td>
-              <td>${item.type}</td>
-              <td>${item.status === "active" ? "已上线" : "已下架"}</td>
-              <td>${adminReason(item)}</td>
-              <td><button class="btn secondary" data-admin="${item.id}">复核</button></td>
-            </tr>
-          `).join("") || `<tr><td colspan="5">当前分类暂无数据</td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function adminRows() {
-  if (state.adminCategory === "feedback") {
-    return schemes.filter((item) => feedbackAudit(item).flagged).slice(0, 200);
-  }
-  if (state.adminCategory === "reserved") return [];
-  return schemes.filter((item) => item.source !== "orzice-authorized" || item.raw?.status === "pending").slice(0, 200);
-}
-
-function adminReason(item) {
-  if (state.adminCategory === "feedback") return feedbackAudit(item).message;
-  if (state.adminCategory === "reserved") return "待定义";
-  return item.source === "orzice-authorized" ? "授权同步数据" : "用户投稿待审核";
-}
-
-function bindAppEvents() {
-  document.querySelector("#logout").addEventListener("click", () => {
-    localStorage.removeItem("zfq_user");
-    state.user = null;
-    mountLogin();
-  });
-
-  document.querySelectorAll("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.view = button.dataset.view;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll("[data-admin-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.adminCategory = button.dataset.adminCategory;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll("[data-game]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.game = button.dataset.game;
-      state.weapon = "all";
-      state.weaponName = "all";
-      state.pickerCategory = "all";
-      state.ammo = "all";
-      state.value = "all";
-      state.search = "";
-      state.page = 1;
-      state.selected = null;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll("[data-delta-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.deltaMode = button.dataset.deltaMode;
-      state.weapon = "all";
-      state.weaponName = "all";
-      state.pickerCategory = "all";
-      state.ammo = "all";
-      state.value = "all";
-      state.page = 1;
-      state.selected = null;
-      renderApp();
-    });
-  });
-
-  document.querySelector("#copyCurrent").addEventListener("click", () => copyScheme(state.selected));
-  document.querySelector("#importCurrent").addEventListener("click", () => importScheme(state.selected));
-
-  bindInput("#search", "input", (event) => {
+function bindEvents() {
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
+    state.view = button.dataset.view;
+    render();
+  }));
+  document.querySelectorAll("[data-library-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.libraryMode = button.dataset.libraryMode;
+    render();
+  }));
+  document.querySelector("#song-search")?.addEventListener("input", (event) => {
     state.search = event.target.value;
-    state.page = 1;
-    renderApp();
+    state.selectedSongId = filteredSongs()[0]?.id || null;
+    render();
+    const input = document.querySelector("#song-search");
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
   });
-  bindInput("#openWeaponPicker", "click", () => {
-    state.pickerOpen = true;
-    state.pickerCategory = state.weapon;
-    renderApp();
+  document.querySelectorAll("[data-song-id]").forEach((node) => {
+    node.addEventListener("click", () => { state.selectedSongId = node.dataset.songId; render(); });
+    node.addEventListener("dblclick", () => previewSong(node.dataset.songId));
+    node.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", node.dataset.songId));
   });
-
-  document.querySelectorAll("[data-picker-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.pickerCategory = button.dataset.pickerCategory;
-      state.weapon = state.pickerCategory;
-      state.weaponName = "all";
-      renderApp();
+  document.querySelectorAll("[data-slot]").forEach((node) => {
+    if (!node.classList.contains("slot-target")) return;
+    node.addEventListener("dragover", (event) => { event.preventDefault(); node.classList.add("drag-over"); });
+    node.addEventListener("dragleave", () => node.classList.remove("drag-over"));
+    node.addEventListener("drop", (event) => {
+      event.preventDefault();
+      assignSong(Number(node.dataset.slot), event.dataTransfer.getData("text/plain"));
+    });
+    node.addEventListener("click", (event) => {
+      if (!event.target.closest("button") && selectedSong()) assignSong(Number(node.dataset.slot), selectedSong().id);
     });
   });
-
-  document.querySelectorAll("[data-picker-weapon]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.weaponName = button.dataset.pickerWeapon;
-      renderApp();
-    });
-  });
-
-  bindInput("#closeWeaponPicker", "click", closeWeaponPicker);
-  bindInput("#cancelWeaponPicker", "click", closeWeaponPicker);
-  bindInput("#confirmWeaponPicker", "click", () => {
-    state.pickerOpen = false;
-    state.page = 1;
-    renderApp();
-  });
-  bindInput("#weaponPickerOverlay", "click", (event) => {
-    if (event.target.id === "weaponPickerOverlay") closeWeaponPicker();
-  });
-
-  document.querySelectorAll("[data-price-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.value = button.dataset.priceFilter;
-      state.page = 1;
-      renderApp();
-    });
-  });
-  bindInput("#ammoFilter", "change", (event) => {
-    state.ammo = event.target.value;
-    state.page = 1;
-    renderApp();
-  });
-  bindInput("#sortFilter", "change", (event) => {
-    state.sort = event.target.value;
-    state.page = 1;
-    renderApp();
-  });
-
-  document.querySelectorAll("[data-channel]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.channel = Number(button.dataset.channel);
-      toast(`已选择通道 ${state.channel}`);
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    copyScheme(findScheme(button.dataset.copy));
+  document.querySelectorAll("[data-mapping-slot]").forEach((button) => button.addEventListener("click", () => {
+    state.mappingSlot = Number(button.dataset.mappingSlot);
+    render();
   }));
-  document.querySelectorAll("[data-import]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    importScheme(findScheme(button.dataset.import));
+  document.querySelectorAll("[data-map-mode]").forEach((button) => button.addEventListener("click", () => {
+    const mapping = state.mappings[state.mappingSlot];
+    mapping.mode = button.dataset.mapMode;
+    if (mapping.mode === "single") mapping.modifiers = [];
+    render();
   }));
-  document.querySelectorAll("[data-select]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selected = findScheme(button.dataset.select);
-      renderApp();
+  document.querySelectorAll("[data-modifier]").forEach((input) => input.addEventListener("change", () => {
+    const mapping = state.mappings[state.mappingSlot];
+    mapping.modifiers = [...document.querySelectorAll("[data-modifier]:checked")].map((item) => item.dataset.modifier);
+    render();
+  }));
+  document.querySelector("#key-select")?.addEventListener("change", (event) => {
+    state.mappings[state.mappingSlot].key = event.target.value;
+    render();
+  });
+  document.querySelector("#key-capture")?.addEventListener("keydown", captureKey);
+  document.querySelector("#firmware-input")?.addEventListener("change", readFirmware);
+  document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button)));
+}
+
+function captureKey(event) {
+  event.preventDefault();
+  const ignored = ["Control", "Shift", "Alt", "Meta"];
+  if (ignored.includes(event.key)) return;
+  const aliases = { " ": "Space", Escape: "Esc", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right" };
+  const key = aliases[event.key] || (event.key.length === 1 ? event.key.toUpperCase() : event.key);
+  const mapping = state.mappings[state.mappingSlot];
+  mapping.key = key;
+  mapping.modifiers = [event.ctrlKey && "Ctrl", event.shiftKey && "Shift", event.altKey && "Alt", event.metaKey && "Win"].filter(Boolean);
+  mapping.mode = mapping.modifiers.length ? "combo" : "single";
+  render();
+  document.querySelector("#key-capture")?.focus();
+}
+
+function handleAction(button) {
+  const action = button.dataset.action;
+  if (action === "preview-song") return previewSong(button.dataset.songId);
+  if (action === "save-slot") return saveSlot(Number(button.dataset.slot));
+  if (action === "scan-device") return scanDevices();
+  if (action === "connect-device") return connectDevice();
+  if (action === "reload-library") return loadCatalog(true);
+  if (action === "reset-mapping") {
+    state.mappings[state.mappingSlot] = structuredClone(DEFAULT_MAPPINGS[state.mappingSlot]);
+    persist(); render(); showToast(`K${state.mappingSlot + 1} 已恢复默认设置`); return;
+  }
+  if (action === "apply-mapping") { persist(); showToast(`K${state.mappingSlot + 1} 已应用到本次配置`); return; }
+  if (action === "start-update") return startFirmwareUpdate();
+}
+
+function assignSong(slot, songId) {
+  if (!state.songs.some((song) => song.id === songId)) return;
+  state.slotSongIds[slot] = songId;
+  persist();
+  render();
+  showToast(`《${slotSong(slot).title}》已放到 K${slot + 1}`);
+}
+
+async function previewSong(songId) {
+  const song = state.songs.find((item) => item.id === songId);
+  if (!song) return;
+  if (state.previewSongId === songId) {
+    stopPreview();
+    state.previewSongId = null;
+    render();
+    return;
+  }
+  state.previewSongId = songId;
+  render();
+  try {
+    await startPreview(song.compiled, () => {
+      state.previewSongId = null;
+      render();
     });
-  });
+  } catch (error) {
+    state.previewSongId = null;
+    render();
+    showToast(`试听失败：${error.message}`, "error");
+  }
+}
 
-  document.querySelectorAll("[data-feedback]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!state.selected) return;
-      const type = button.dataset.feedback;
-      if (!recordFeedbackVote(state.selected, type)) return;
-      state.selected.feedback[type] += 1;
-      toast(feedbackAudit(state.selected).flagged ? "反馈已记录，该方案已进入自动复核提示" : "反馈已记录，同一用户同一项只能点击一次");
-      renderApp();
+async function scanDevices() {
+  try {
+    state.devices = await hid.authorizedDevices();
+    state.device.label = state.devices.length ? (state.devices[0].productName || "GXM 键盘") : (webHidSupported ? "未发现 GXM 键盘" : "浏览器不支持 WebHID");
+    render();
+    showToast(state.devices.length ? `发现 ${state.devices.length} 台已授权设备` : "没有发现已授权的 GXM 键盘");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function connectDevice() {
+  try {
+    const status = await hid.connect({ request: true });
+    state.device = {
+      connected: true,
+      label: hid.device.productName || "GXM 键盘",
+      validMask: status.validMask,
+      keyMask: status.keyMask,
+      playing: status.playing,
+      activeSlot: status.activeSlot,
+      firmwareVersion: status.firmwareVersion,
+    };
+    state.devices = [hid.device];
+    render();
+    startStatusPolling();
+    showToast("GXM 键盘已连接", "success");
+  } catch (error) {
+    showToast(error.message || "连接已取消", "error");
+  }
+}
+
+function startStatusPolling() {
+  window.clearInterval(statusTimer);
+  statusTimer = window.setInterval(async () => {
+    if (!state.device.connected || state.upgrading) return;
+    try {
+      const status = await hid.getStatus();
+      Object.assign(state.device, {
+        validMask: status.validMask, keyMask: status.keyMask, playing: status.playing,
+        activeSlot: status.activeSlot, firmwareVersion: status.firmwareVersion,
+      });
+      if (state.view === "device") render();
+    } catch {
+      // A transient status miss does not disconnect a healthy HID handle.
+    }
+  }, 800);
+}
+
+async function saveSlot(slot) {
+  const song = slotSong(slot);
+  if (!song) return;
+  if (!state.device.connected) {
+    showToast("请先在右上角连接 GXM 键盘", "error");
+    return;
+  }
+  state.uploadingSlot = slot;
+  state.uploadPercent = 0;
+  render();
+  try {
+    const status = await hid.upload(slot, song.compiled.packageBytes, (current, total) => {
+      state.uploadPercent = Math.round(current * 100 / total);
+      render();
     });
-  });
-
-  bindInput("#prevPage", "click", () => {
-    state.page = Math.max(1, state.page - 1);
-    renderApp();
-  });
-  bindInput("#nextPage", "click", () => {
-    state.page += 1;
-    renderApp();
-  });
-
-  bindInput("#submitForm", "submit", (event) => {
-    event.preventDefault();
-    toast("已提交到后台待审核");
-  });
-
-  document.querySelectorAll("[data-admin]").forEach((button) => {
-    button.addEventListener("click", () => toast("后台复核动作已预留，后续接 D1 数据库"));
-  });
-}
-
-function bindInput(selector, eventName, handler) {
-  const node = document.querySelector(selector);
-  if (node) node.addEventListener(eventName, handler);
-}
-
-function closeWeaponPicker() {
-  state.pickerOpen = false;
-  renderApp();
-}
-
-function findScheme(id) {
-  return schemes.find((item) => item.id === id);
-}
-
-function currentActorId() {
-  let deviceId = localStorage.getItem("zfq_device_id");
-  if (!deviceId) {
-    deviceId = `device-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    localStorage.setItem("zfq_device_id", deviceId);
+    state.device.validMask = status.validMask;
+    showToast(`保存完成，《${song.title}》已经放进 K${slot + 1}`, "success");
+  } catch (error) {
+    showToast(`保存失败：${error.message}`, "error");
+  } finally {
+    state.uploadingSlot = -1;
+    render();
   }
-  return `${state.user?.id || "anonymous"}:${deviceId}`;
 }
 
-function feedbackVoteKey(item, type) {
-  return `zfq_feedback:${currentActorId()}:${item.id}:${type}`;
+function firmwareVersionFromName(name) {
+  const match = name.match(/(?:^|[^a-z0-9])v(\d+)\.(\d+)/i);
+  return match ? ((Number(match[1]) << 16) | Number(match[2])) >>> 0 : 0;
 }
 
-function hasVotedFeedback(item, type) {
-  return localStorage.getItem(feedbackVoteKey(item, type)) === "1";
-}
-
-function recordFeedbackVote(item, type) {
-  if (hasVotedFeedback(item, type)) {
-    toast("这项反馈你已经点过了，本次不会重复计数");
-    return false;
+function parseIntelHex(text, name) {
+  const APP_BASE = 0x3100;
+  const APP_END = 0xd000;
+  const memory = new Map();
+  let upper = 0;
+  let eof = false;
+  let mode = null;
+  let sourceLow = Infinity;
+  let sourceHigh = 0;
+  const lines = String(text).split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex].trim();
+    if (!line) continue;
+    if (eof) throw new Error(`第 ${lineIndex + 1} 行位于 EOF 记录之后`);
+    if (!line.startsWith(":") || line.length < 11 || (line.length - 1) % 2) throw new Error(`第 ${lineIndex + 1} 行不是有效 Intel HEX`);
+    if (!/^[0-9a-f]+$/i.test(line.slice(1))) throw new Error(`第 ${lineIndex + 1} 行含有非十六进制字符`);
+    const record = Uint8Array.from(line.slice(1).match(/../g).map((pair) => Number.parseInt(pair, 16)));
+    if (record.length !== record[0] + 5) throw new Error(`第 ${lineIndex + 1} 行长度无效`);
+    if ([...record].reduce((sum, value) => sum + value, 0) & 0xff) throw new Error(`第 ${lineIndex + 1} 行校验和错误`);
+    const offset = (record[1] << 8) | record[2];
+    const type = record[3];
+    const payload = record.slice(4, -1);
+    if (type === 0) {
+      for (let index = 0; index < payload.length; index += 1) {
+        const source = upper + offset + index;
+        const currentMode = source >= APP_BASE && source < APP_END ? "alias" : source >= 0x08003100 && source < 0x0800d000 ? "physical" : null;
+        if (!currentMode) throw new Error(`地址 0x${source.toString(16).toUpperCase()} 超出 APP 分区`);
+        if (mode && mode !== currentMode) throw new Error("HEX 混用了别名地址与物理地址");
+        mode = currentMode;
+        const normalized = currentMode === "physical" ? source - 0x08000000 : source;
+        if (memory.has(normalized) && memory.get(normalized) !== payload[index]) throw new Error("HEX 存在冲突的重复数据");
+        memory.set(normalized, payload[index]);
+        sourceLow = Math.min(sourceLow, source);
+        sourceHigh = Math.max(sourceHigh, source + 1);
+      }
+    } else if (type === 1) {
+      if (record[0] !== 0) throw new Error("EOF 记录长度无效");
+      eof = true;
+    } else if (type === 2) {
+      upper = ((payload[0] << 8) | payload[1]) << 4;
+    } else if (type === 4) {
+      upper = (((payload[0] << 8) | payload[1]) << 16) >>> 0;
+    } else if (![3, 5].includes(type)) {
+      throw new Error(`不支持的 HEX 记录类型 0x${type.toString(16)}`);
+    }
   }
+  if (!eof) throw new Error("Intel HEX 缺少 EOF 记录");
+  if (!memory.has(APP_BASE)) throw new Error("APP 必须从 0x00003100（或 0x08003100）开始");
+  const end = Math.max(...memory.keys()) + 1;
+  const data = new Uint8Array(end - APP_BASE);
+  data.fill(0xff);
+  memory.forEach((value, address) => { data[address - APP_BASE] = value; });
+  return { data, crc32: crc32(data), firmwareVersion: firmwareVersionFromName(name), sourceLow, sourceHigh, mode };
+}
 
-  const burstKey = `zfq_feedback_burst:${item.id}:${type}`;
-  const now = Date.now();
-  const previous = Number(localStorage.getItem(burstKey) || "0");
-  if (now - previous < 2500) {
-    toast("同一方案同一反馈点击过快，本次仅作一次处理");
-    localStorage.setItem(feedbackVoteKey(item, type), "1");
-    return false;
+async function readFirmware(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const image = parseIntelHex(await file.text(), file.name);
+    state.firmware = {
+      ...image, valid: true, progress: 0,
+      summary: `${file.name} · ${image.data.length.toLocaleString()} 字节 · CRC32 ${image.crc32.toString(16).toUpperCase().padStart(8, "0")}`,
+      log: [`更新文件校验通过`, `APP 地址 0x${image.sourceLow.toString(16).toUpperCase()} - 0x${(image.sourceHigh - 1).toString(16).toUpperCase()}`],
+    };
+  } catch (error) {
+    state.firmware = { valid: false, progress: 0, summary: `固件无效：${error.message}`, log: [error.message] };
+    showToast(error.message, "error");
   }
-
-  localStorage.setItem(burstKey, String(now));
-  localStorage.setItem(feedbackVoteKey(item, type), "1");
-  return true;
+  render();
 }
 
-function feedbackAudit(item) {
-  const total = item.feedback.invalid + item.feedback.good + item.feedback.inaccurate + item.feedback.weak;
-  const invalidRatio = total ? item.feedback.invalid / total : 0;
-  const inaccurateRatio = total ? item.feedback.inaccurate / total : 0;
-  if (item.feedback.invalid >= 10 && invalidRatio >= 0.35) {
-    return { flagged: true, message: "改枪码无效反馈超过门槛，后台应自动屏蔽并进入复核。" };
+async function startFirmwareUpdate() {
+  if (!state.firmware?.valid || state.upgrading) return;
+  state.upgrading = true;
+  state.firmware.log.push("准备连接 GXM Bootloader");
+  render();
+  try {
+    if (state.device.connected) {
+      await hid.enterIap();
+      state.device.connected = false;
+      state.firmware.log.push("设备已进入更新模式");
+      await new Promise((resolve) => window.setTimeout(resolve, 900));
+    }
+    const bootloader = await requestBootloader();
+    await uploadFirmware(bootloader, state.firmware, (percent, message) => {
+      state.firmware.progress = Math.max(0, Math.min(100, percent));
+      if (state.firmware.log.at(-1) !== message) state.firmware.log.push(message);
+      render();
+    });
+    state.firmware.log.push("固件升级完成");
+    showToast("固件升级完成", "success");
+    await bootloader.close();
+  } catch (error) {
+    state.firmware.log.push(`升级失败：${error.message}`);
+    showToast(`固件升级失败：${error.message}`, "error");
+  } finally {
+    state.upgrading = false;
+    render();
   }
-  if (item.feedback.inaccurate >= 15 && inaccurateRatio >= 0.4) {
-    return { flagged: true, message: "数据不准反馈偏高，后台应提示风险并进入复核。" };
+}
+
+async function loadCatalog(reload = false) {
+  try {
+    const response = await fetch(`./data/music-catalog.json${reload ? `?t=${Date.now()}` : ""}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    state.songs = (payload.songs || []).filter((song) => song.verified).map((song) => ({ ...song, compiled: compileSong(song) }));
+    state.selectedSongId = state.songs.some((song) => song.id === state.selectedSongId) ? state.selectedSongId : state.songs[0]?.id || null;
+    render();
+    if (reload) showToast(`音乐库已重新加载，共 ${state.songs.length} 首`);
+  } catch (error) {
+    state.songs = [];
+    render();
+    showToast(`音乐库读取失败：${error.message}`, "error");
   }
-  return { flagged: false, message: "反馈设有门槛：同一用户、同一设备、同一方案、同一反馈只能计一次。" };
 }
 
-async function copyScheme(item) {
-  if (!item) return;
-  await navigator.clipboard.writeText(item.code);
-  toast("改枪码已复制");
-}
-
-function importScheme(item) {
-  if (!item) return;
-  const channelText = state.game === "valorant" ? `，通道 ${state.channel}` : "";
-  toast(`${item.weapon} 配置已导入${channelText}`);
-  console.info("导入转发器配置", channelConfig(item));
-}
-
-function channelConfig(item) {
-  if (!item) return "";
-  return String(item.config || "").replaceAll("{{channel}}", String(state.channel));
-}
-
-function toast(message) {
-  const old = document.querySelector(".toast");
-  if (old) old.remove();
-  const node = document.createElement("div");
-  node.className = "toast";
-  node.textContent = message;
-  document.body.appendChild(node);
-  window.setTimeout(() => node.remove(), 2200);
-}
-
-async function boot() {
-  await loadSchemes();
-  renderApp();
-}
-
-boot();
+render();
+loadCatalog();
+scanDevices();
