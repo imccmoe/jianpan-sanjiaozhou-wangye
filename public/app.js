@@ -1,7 +1,12 @@
 import { compileSong, crc32, formatDuration, startPreview, stopPreview } from "./music-engine.js";
-import { MusicHidDevice, requestBootloader, uploadFirmware, webHidSupported } from "./device.js";
+import { inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, webHidSupported } from "./device.js";
 
-const APP_VERSION = "1.05";
+const APP_VERSION = "1.08";
+const TEST_STAGE_LABELS = {
+  1: "阶段 1 · 新接入未测试",
+  2: "阶段 2 · Qt 试听通过",
+  3: "阶段 3 · 游戏实测通过",
+};
 const PLANET_POSITIONS = [
   [54, 70, 1.18], [30, 35, 0.72], [62, 22, 0.66], [76, 42, 0.72], [20, 58, 0.55],
   [45, 44, 0.82], [70, 70, 0.9], [84, 61, 0.55], [36, 70, 0.62], [16, 31, 0.56],
@@ -25,6 +30,8 @@ const state = {
   view: "library",
   libraryMode: "planet",
   search: "",
+  stageFilter: 0,
+  stageOverrides: readStageOverrides(),
   songs: [],
   selectedSongId: null,
   slotSongIds: readStorage("gxm_library_slots", [null, null, null]),
@@ -63,9 +70,28 @@ function readStorage(key, fallback) {
   }
 }
 
+function readStageOverrides() {
+  try {
+    const value = JSON.parse(localStorage.getItem("gxm_test_stage_overrides") || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeTestStage(value) {
+  const stage = Number.parseInt(value, 10);
+  return Math.max(1, Math.min(3, Number.isFinite(stage) ? stage : 1));
+}
+
+function stageLabel(song) {
+  return TEST_STAGE_LABELS[normalizeTestStage(song.test_stage)];
+}
+
 function persist() {
   localStorage.setItem("gxm_library_slots", JSON.stringify(state.slotSongIds));
   localStorage.setItem("gxm_key_mappings", JSON.stringify(state.mappings));
+  localStorage.setItem("gxm_test_stage_overrides", JSON.stringify(state.stageOverrides));
 }
 
 function escapeHtml(value) {
@@ -89,8 +115,10 @@ function showToast(message, type = "info") {
 
 function filteredSongs() {
   const query = state.search.trim().toLowerCase();
-  if (!query) return state.songs;
-  return state.songs.filter((song) => `${song.title} ${song.author} ${song.difficulty} ${song.source}`.toLowerCase().includes(query));
+  return state.songs.filter((song) => {
+    if (state.stageFilter && song.test_stage !== state.stageFilter) return false;
+    return !query || `${song.title} ${song.author} ${song.difficulty} ${song.source} ${stageLabel(song)}`.toLowerCase().includes(query);
+  });
 }
 
 function selectedSong() {
@@ -167,7 +195,7 @@ function renderLibrary() {
   const switches = `<div class="view-switch" role="group"><button class="${state.libraryMode === "planet" ? "active" : ""}" data-library-mode="planet">星球视图</button><button class="${state.libraryMode === "list" ? "active" : ""}" data-library-mode="list">全部音乐&nbsp; ${songs.length}</button><button class="button" data-action="reload-library">重新加载</button></div>`;
   return `
     ${pageHeading("发现音乐", "音乐星球", "像浏览星空一样选歌。单击查看，双击试听，也可以直接拖到 K1～K3。", switches)}
-    <section class="search-strip"><strong>查找星球</strong><input id="song-search" value="${escapeHtml(state.search)}" placeholder="搜索歌名、作者或难度" /><span>${state.libraryMode === "planet" ? `星球展示 ${shown} / ${songs.length} 首` : `全部 ${songs.length} 首音乐`}</span></section>
+    <section class="search-strip"><strong>查找星球</strong><input id="song-search" value="${escapeHtml(state.search)}" placeholder="搜索歌名、作者、难度或测试阶段" /><select id="stage-filter" aria-label="测试阶段筛选"><option value="0">全部阶段</option>${Object.entries(TEST_STAGE_LABELS).map(([stage, label]) => `<option value="${stage}" ${state.stageFilter === Number(stage) ? "selected" : ""}>${label}</option>`).join("")}</select><span>${state.libraryMode === "planet" ? `星球展示 ${shown} / ${songs.length} 首` : `全部 ${songs.length} 首音乐`}</span></section>
     <div class="library-stage">
       ${state.libraryMode === "planet" ? renderPlanet(songs.slice(0, 20)) : renderSongList(songs)}
       ${renderSongDetail(song)}
@@ -187,7 +215,7 @@ function renderPlanet(songs) {
 
 function renderSongList(songs) {
   if (!songs.length) return `<div class="song-list empty-state">没有找到匹配的音乐</div>`;
-  return `<div class="song-list">${songs.map((song) => `<button class="song-list-item ${song.id === selectedSong()?.id ? "active" : ""}" draggable="true" data-song-id="${escapeHtml(song.id)}"><strong>${escapeHtml(song.title)}</strong><span>${escapeHtml(song.author)} · ${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${sourceTag(song)} · ${song.game_verified ? "实机通过" : "待实机"}</span></button>`).join("")}</div>`;
+  return `<div class="song-list">${songs.map((song) => `<button class="song-list-item ${song.id === selectedSong()?.id ? "active" : ""}" draggable="true" data-song-id="${escapeHtml(song.id)}"><strong>${escapeHtml(song.title)}</strong><span>${escapeHtml(song.author)} · ${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${sourceTag(song)} · ${stageLabel(song)}</span></button>`).join("")}</div>`;
 }
 
 function renderSongDetail(song) {
@@ -197,7 +225,8 @@ function renderSongDetail(song) {
     <h2>${escapeHtml(song.title)}</h2>
     <p>${escapeHtml(song.author)}</p>
     <p>${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${formatDuration(song.compiled.durationMs)}<br>${state.libraryMode === "planet" ? "按住星球拖到下方键位即可选中。" : "从列表拖到下方键位，双击可以直接试听。"}</p>
-    <span class="status-chip">已适配</span>
+    <span class="status-chip">${stageLabel(song)}</span>
+    <label class="stage-editor"><span>测试阶段</span><select id="detail-stage" aria-label="测试阶段">${Object.entries(TEST_STAGE_LABELS).map(([stage, label]) => `<option value="${stage}" ${song.test_stage === Number(stage) ? "selected" : ""}>${label}</option>`).join("")}</select></label>
     <button class="preview-button" data-action="preview-song" data-song-id="${escapeHtml(song.id)}">${state.previewSongId === song.id ? "停止" : "试听"}</button>
   </aside>`;
 }
@@ -244,7 +273,7 @@ function renderDevice() {
       return `<div class="${pressed ? "pressed" : ""}"><strong>K${slot + 1}</strong><span>${state.device.connected ? (pressed ? "按下" : "松开") : "未连接"}</span></div>`;
     }).join("")}</fieldset>
     <section class="firmware-card">
-      <h2>固件更新</h2><p>更新不会清除 K1～K3 中的音乐。升级中途断开时，可以重新选择同一文件继续。</p>
+      <h2>固件更新</h2><p>更新不会清除 K1～K3 中的音乐。升级中途断开时，可以重新选择同一文件继续。请选择项目默认 APP 文件 <code>../CH32V203C8T/obj/CH32V203C8T.hex</code>。</p>
       <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择更新文件"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".hex,text/plain"></label></div>
       <div class="progress"><span style="width:${firmware?.progress || 0}%"></span></div>
       <button class="button primary update-button" data-action="start-update" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : "开始更新"}</button>
@@ -277,6 +306,20 @@ function bindEvents() {
     const input = document.querySelector("#song-search");
     input?.focus();
     input?.setSelectionRange(input.value.length, input.value.length);
+  });
+  document.querySelector("#stage-filter")?.addEventListener("change", (event) => {
+    state.stageFilter = Number(event.target.value);
+    state.selectedSongId = filteredSongs()[0]?.id || null;
+    render();
+  });
+  document.querySelector("#detail-stage")?.addEventListener("change", (event) => {
+    const song = selectedSong();
+    if (!song) return;
+    song.test_stage = normalizeTestStage(event.target.value);
+    state.stageOverrides[song.id] = song.test_stage;
+    state.songs.sort((left, right) => left.test_stage - right.test_stage || left.catalogIndex - right.catalogIndex);
+    persist();
+    render();
   });
   document.querySelectorAll("[data-song-id]").forEach((node) => {
     node.addEventListener("click", () => { state.selectedSongId = node.dataset.songId; render(); });
@@ -536,13 +579,16 @@ async function startFirmwareUpdate() {
   state.firmware.log.push("准备连接 GXM Bootloader");
   render();
   try {
+    await inspectUpgradeDevices();
+    let switchedFromApp = false;
     if (state.device.connected) {
       await hid.enterIap();
+      switchedFromApp = true;
       state.device.connected = false;
       state.firmware.log.push("设备已进入更新模式");
       await new Promise((resolve) => window.setTimeout(resolve, 900));
     }
-    const bootloader = await requestBootloader();
+    const bootloader = await requestBootloader({ afterSwitch: switchedFromApp });
     await uploadFirmware(bootloader, state.firmware, (percent, message) => {
       state.firmware.progress = Math.max(0, Math.min(100, percent));
       if (state.firmware.log.at(-1) !== message) state.firmware.log.push(message);
@@ -565,7 +611,15 @@ async function loadCatalog(reload = false) {
     const response = await fetch(`./data/music-catalog.json${reload ? `?t=${Date.now()}` : ""}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
-    state.songs = (payload.songs || []).filter((song) => song.verified).map((song) => ({ ...song, compiled: compileSong(song) }));
+    state.songs = (payload.songs || [])
+      .filter((song) => song.verified)
+      .map((song, catalogIndex) => ({
+        ...song,
+        catalogIndex,
+        test_stage: normalizeTestStage(state.stageOverrides[song.id] ?? song.test_stage),
+        compiled: compileSong(song),
+      }))
+      .sort((left, right) => left.test_stage - right.test_stage || left.catalogIndex - right.catalogIndex);
     state.selectedSongId = state.songs.some((song) => song.id === state.selectedSongId) ? state.selectedSongId : state.songs[0]?.id || null;
     render();
     if (reload) showToast(`音乐库已重新加载，共 ${state.songs.length} 首`);

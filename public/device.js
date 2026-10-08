@@ -20,6 +20,32 @@ const MUSIC = {
 
 export const webHidSupported = "hid" in navigator;
 
+async function authorizedGxmDevices() {
+  if (!webHidSupported) return [];
+  return (await navigator.hid.getDevices()).filter((device) => device.vendorId === VID && [APP_PID, BOOT_PID].includes(device.productId));
+}
+
+function validateUpgradeTopology(devices, { afterSwitch = false, expectedBootloader = null } = {}) {
+  const appDevices = devices.filter((device) => device.productId === APP_PID);
+  const bootDevices = devices.filter((device) => device.productId === BOOT_PID);
+  if (afterSwitch) {
+    if (bootDevices.length > 1) throw new Error("切换升级模式后检测到多个 FE02 Bootloader；请只连接一块待升级键盘后重试");
+    if (appDevices.length) throw new Error("切换升级模式后仍检测到 FE01 键盘；请断开其他键盘后重试");
+    if (!bootDevices.length) throw new Error("切换升级模式后 FE02 Bootloader 已消失；请重新连接键盘后重试");
+    if (expectedBootloader && bootDevices[0] !== expectedBootloader) throw new Error("切换升级模式后 FE02 设备路径发生变化；请只连接一块待升级键盘后重试");
+  } else {
+    if (appDevices.length > 1) throw new Error("检测到多个 FE01 键盘；请只连接一块待升级键盘后重试");
+    if (bootDevices.length > 1) throw new Error("检测到多个 FE02 Bootloader；请只连接一块待升级键盘后重试");
+    if (appDevices.length && bootDevices.length) throw new Error("同时检测到 FE01 和 FE02 设备；请只连接一块待升级键盘后重试");
+  }
+  return { appDevices, bootDevices };
+}
+
+export async function inspectUpgradeDevices() {
+  if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID");
+  return validateUpgradeTopology(await authorizedGxmDevices());
+}
+
 function delay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -186,12 +212,26 @@ export class MusicHidDevice {
   }
 }
 
-export async function requestBootloader() {
+export async function requestBootloader({ afterSwitch = false, expectedBootloader = null } = {}) {
   if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID");
-  const authorized = (await navigator.hid.getDevices()).filter((device) => device.vendorId === VID && device.productId === BOOT_PID);
-  const devices = authorized.length ? authorized : await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: BOOT_PID }] });
-  if (!devices.length) throw new Error("未发现 GXM Bootloader");
-  const device = devices[0];
+  let authorized = await authorizedGxmDevices();
+  let bootDevices = authorized.filter((device) => device.productId === BOOT_PID);
+  if (!bootDevices.length) {
+    const requested = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: BOOT_PID }] });
+    if (!requested.length) throw new Error("未发现 GXM Bootloader");
+    if (afterSwitch) expectedBootloader ||= requested[0];
+    authorized = await authorizedGxmDevices();
+    bootDevices = authorized.filter((device) => device.productId === BOOT_PID);
+  }
+  if (afterSwitch && bootDevices.length) {
+    for (let attempt = 0; attempt < 5 && authorized.some((device) => device.productId === APP_PID); attempt += 1) {
+      await delay(100);
+      authorized = await authorizedGxmDevices();
+    }
+  }
+  const topology = validateUpgradeTopology(authorized, { afterSwitch, expectedBootloader });
+  if (!topology.bootDevices.length) throw new Error("未发现 GXM Bootloader");
+  const device = topology.bootDevices[0];
   if (!device.opened) await device.open();
   return device;
 }
