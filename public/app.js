@@ -16,7 +16,13 @@ const PLANET_POSITIONS = [
   [12, 70, 0.54], [92, 76, 0.55], [33, 18, 0.52], [51, 83, 0.56], [81, 82, 0.58],
 ];
 const PLANET_COLORS = ["#86ddd4", "#aeb9e7", "#f2aab3", "#8fd4cb", "#9fd9f1", "#d8bb75"];
-const KEY_OPTIONS = Object.keys(KEY_USAGES).map((key) => [key, key]);
+const KEY_LABELS = { Space: "空格", Enter: "回车", Backspace: "退格", Delete: "删除",
+  Up: "上方向", Down: "下方向", Left: "左方向", Right: "右方向" };
+const KEY_ORDER = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789",
+  ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`),
+  "Space", "Enter", "Esc", "Tab", "Backspace", "Insert", "Delete", "Up", "Down", "Left", "Right",
+  "Home", "End", "Page Up", "Page Down", "Caps Lock", "Scroll Lock", "Print Screen", "Pause", "Num Lock"];
+const KEY_OPTIONS = KEY_ORDER.filter((key) => key in KEY_USAGES).map((key) => [KEY_LABELS[key] || key, key]);
 const DEFAULT_MAPPINGS = [
   { role: "key", mode: "single", modifiers: [], key: "A", spinCounts: 12000, spinCycleMs: 500, mouseSensitivity: 3, horizontalSensitivity: 1 },
   { role: "key", mode: "single", modifiers: [], key: "Space", spinCounts: 12000, spinCycleMs: 500, mouseSensitivity: 3, horizontalSensitivity: 1 },
@@ -264,7 +270,7 @@ function renderSongDetail(song) {
     <span class="detail-eyebrow">当前星球</span>
     <h2>${escapeHtml(song.title)}</h2>
     <p>${escapeHtml(song.author)}</p>
-    <p>${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${formatDuration(song.compiled.durationMs)}<br>${state.libraryMode === "planet" ? "按住星球拖到下方键位即可选中。" : "从列表拖到下方键位，双击可以直接试听。"}</p>
+    <p>编号 #${song.music_id} · ${escapeHtml(song.difficulty)} · ${song.bpm} BPM · ${formatDuration(song.compiled.durationMs)}<br>${state.libraryMode === "planet" ? "按住星球拖到下方键位即可选中。" : "从列表拖到下方键位，双击可以直接试听。"}</p>
     <span class="status-chip">${stageLabel(song)}</span>
     <label class="stage-editor"><span>测试阶段</span><select id="detail-stage" aria-label="测试阶段">${Object.entries(TEST_STAGE_LABELS).map(([stage, label]) => `<option value="${stage}" ${song.test_stage === Number(stage) ? "selected" : ""}>${label}</option>`).join("")}</select></label>
     <button class="preview-button" data-action="preview-song" data-song-id="${escapeHtml(song.id)}">${state.previewSongId === song.id ? "停止" : "试听"}</button>
@@ -276,7 +282,7 @@ function renderSlot(slot) {
   const uploading = state.uploadingSlot === slot;
   return `<article class="slot-target ${song ? "filled" : ""}" data-slot="${slot}">
     <span class="slot-badge">K${slot + 1}</span>
-    <div><strong>${escapeHtml(song?.title || "拖到这里")}</strong><small>${song ? "拖入后点击右侧保存" : "拖入后点击右侧保存"}</small></div>
+    <div><strong>${escapeHtml(song ? `${song.title} · #${song.music_id}` : "拖到这里")}</strong><small>设备已保存：${escapeHtml(deviceSongText(slot))}</small></div>
     <button class="save-button" data-action="save-slot" data-slot="${slot}" ${song && !state.upgrading ? "" : "disabled"}>${uploading ? `写入 ${state.uploadPercent}%` : `保存到 K${slot + 1}`}</button>
   </article>`;
 }
@@ -689,6 +695,7 @@ function startStatusPolling() {
       const status = await hid.getStatus();
       const oldKeyMask = state.device.keyMask;
       const oldMusicIds = state.device.musicIds;
+      const oldValidMask = state.device.validMask;
       Object.assign(state.device, {
         validMask: status.validMask, keyMask: status.keyMask, playing: status.playing,
         activeSlot: status.activeSlot, firmwareVersion: status.firmwareVersion,
@@ -697,8 +704,11 @@ function startStatusPolling() {
         ledConfigFormat: status.ledConfigFormat, ledGeneration: status.ledGeneration,
       });
       if (state.view === "device" &&
-          (oldKeyMask !== status.keyMask || oldMusicIds.some((id, slot) => id !== status.musicIds[slot]))) render();
+          (oldKeyMask !== status.keyMask || oldValidMask !== status.validMask ||
+            oldMusicIds.some((id, slot) => id !== status.musicIds[slot]))) render();
       if (state.view === "mapping" && oldKeyMask !== status.keyMask) render();
+      if (state.view === "library" &&
+          (oldValidMask !== status.validMask || oldMusicIds.some((id, slot) => id !== status.musicIds[slot]))) render();
       if (state.ledLoaded && !state.ledDirty && status.ledGeneration !== state.ledGeneration) await readLedConfig(false);
     } catch {
       // A transient status miss does not disconnect a healthy HID handle.
