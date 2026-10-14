@@ -3,7 +3,7 @@ import { crc32 } from "./music-engine.js";
 
 const VID = 0x1a86;
 const APP_PID = 0xfe01;
-const BOOT_PID = 0xfe02;
+export const BOOT_PID = 0xfe02;
 const VENDOR_USAGE_PAGE = 0xff00;
 const REPORT_ID = 0;
 const PACKET_SIZE = 63;
@@ -159,18 +159,36 @@ export class MusicHidDevice {
     }
   }
 
-  async authorizedDevices() {
+  async authorizedDevices({ includeBoot = false } = {}) {
     if (!webHidSupported) return [];
-    return (await authorizedSjzDevices()).filter((device) => device.productId === APP_PID);
+    const devices = await authorizedSjzDevices();
+    return includeBoot ? devices : devices.filter((device) => device.productId === APP_PID);
   }
 
-  async connect({ request = false, selectedDevice = null } = {}) {
+  async connect({ request = false, selectedDevice = null, appOnly = false } = {}) {
     if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID，请使用桌面版 Chrome 或 Edge");
-    const devices = selectedDevice ? [selectedDevice] : request
-      ? await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: APP_PID,
-        usagePage: VENDOR_USAGE_PAGE, usage: 1 }] })
+    const requestedDevices = selectedDevice ? [selectedDevice] : request
+      ? await navigator.hid.requestDevice({ filters: appOnly
+        ? [{ vendorId: VID, productId: APP_PID, usagePage: VENDOR_USAGE_PAGE, usage: 1 }]
+        : [
+          { vendorId: VID, productId: APP_PID, usagePage: VENDOR_USAGE_PAGE, usage: 1 },
+          { vendorId: VID, productId: BOOT_PID, usagePage: VENDOR_USAGE_PAGE, usage: 2 },
+        ] })
       : await this.authorizedDevices();
-    if (!devices.length) throw new Error("未发现已授权的 SJZ 键盘");
+    const devices = requestedDevices.filter((device) => device.vendorId === VID &&
+      device.productId === APP_PID && device.collections.some((collection) =>
+        collection.usagePage === VENDOR_USAGE_PAGE && collection.usage === 1));
+    if (!devices.length) {
+      const bootSelected = requestedDevices.some((device) => device.vendorId === VID &&
+        device.productId === BOOT_PID && device.collections.some((collection) =>
+          collection.usagePage === VENDOR_USAGE_PAGE && collection.usage === 2));
+      if (bootSelected) {
+        const error = new Error("已识别 BOOT 升级设备；纯 BOOT 新板请到“设备维护”更新 APP 固件");
+        error.bootMode = true;
+        throw error;
+      }
+      throw new Error(request ? "未选中 SJZ 键盘；请检查 USB 连接后重试，首次连接需在浏览器弹窗中授权" : "未发现已授权的 SJZ 键盘");
+    }
     this.device = devices[0];
     if (!this.device.opened) await this.device.open();
     return this.ping();
@@ -503,5 +521,5 @@ export async function waitForAppReenumeration(timeoutMs = 12000) {
     }
     await delay(100);
   }
-  throw new Error("固件写入和 CRC32 校验成功，但 12 秒内未确认 APP 稳定重连；请检查键盘连接状态");
+  throw new Error("12 秒内浏览器未确认 APP 稳定重连，可能需要重新授权");
 }

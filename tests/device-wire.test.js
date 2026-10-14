@@ -62,6 +62,22 @@ Object.defineProperty(globalThis, "navigator", {
 });
 const { MusicHidDevice, uploadFirmware } = await import("../public/device.js");
 
+test("post-update authorization requests the APP HID interface", async () => {
+  const hidApi = globalThis.navigator.hid;
+  hidApi.requestDevice = async ({ filters }) => {
+    assert.deepEqual(filters, [{ vendorId: 0x1a86, productId: 0xfe01, usagePage: 0xff00, usage: 1 }]);
+    return [fakeDevice];
+  };
+  try {
+    const hid = new MusicHidDevice();
+    const status = await hid.connect({ request: true, appOnly: true });
+    assert.equal(status.firmwareVersion, 0x1000b);
+  } finally {
+    delete hidApi.requestDevice;
+    commands.length = 0;
+  }
+});
+
 test("WebHID reads and saves current keyboard and LED formats", async () => {
   const hid = new MusicHidDevice();
   await hid.connect({ selectedDevice: fakeDevice });

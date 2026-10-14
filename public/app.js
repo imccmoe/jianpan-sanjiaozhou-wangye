@@ -1,5 +1,5 @@
 import { compileSong, formatDuration, startPreview, stopPreview } from "./music-engine.js";
-import { inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, waitForAppReenumeration, webHidSupported } from "./device.js";
+import { BOOT_PID, inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, waitForAppReenumeration, webHidSupported } from "./device.js";
 import { decryptFirmware } from "./firmware.js";
 import { KEY_USAGES, spinCounts } from "./device-config.js";
 
@@ -57,7 +57,8 @@ const state = {
   selectedDeviceIndex: 0,
   device: {
     connected: false,
-    label: webHidSupported ? "未发现 SJZ 键盘" : "浏览器不支持 WebHID",
+    mode: "none",
+    label: webHidSupported ? "点击连接检测设备" : "浏览器不支持 WebHID",
     validMask: 0,
     keyMask: null,
     playing: false,
@@ -74,10 +75,11 @@ const state = {
   firmware: null,
   upgrading: false,
   pendingBoot: null,
+  pendingApp: false,
 };
 
 const hid = new MusicHidDevice(() => {
-  state.device = { ...state.device, connected: false, label: "设备已断开", keyMask: null, playing: false };
+  state.device = { ...state.device, connected: false, mode: "none", label: "设备已断开", keyMask: null, playing: false };
   state.savedMappings = null;
   state.keyboardLoaded = false;
   state.keyboardMessage = "设备已断开";
@@ -197,6 +199,9 @@ function footerText() {
 
 function render() {
   const app = document.querySelector("#app");
+  const deviceStatus = state.device.connected ? "已连接"
+    : state.device.mode === "boot" ? "已进入更新模式"
+      : state.devices.length ? "已发现设备，请点击连接" : "未连接";
   app.innerHTML = `
     <div class="app-shell">
       <header class="topbar">
@@ -205,12 +210,12 @@ function render() {
           <label for="device-select">我的设备</label>
           <select id="device-select" aria-label="我的设备">
             ${state.devices.length
-              ? state.devices.map((device, index) => `<option value="${index}" ${state.selectedDeviceIndex === index ? "selected" : ""}>${escapeHtml(device.productName === "Music Pad" ? "SJZ 键盘" : device.productName || "SJZ 键盘")} ${state.devices.length > 1 ? `(${index + 1})` : ""}</option>`).join("")
+              ? state.devices.map((device, index) => `<option value="${index}" ${state.selectedDeviceIndex === index ? "selected" : ""}>${device.productId === BOOT_PID ? "SJZ 键盘（更新模式）" : escapeHtml(device.productName === "Music Pad" ? "SJZ 键盘" : device.productName || "SJZ 键盘")} ${state.devices.length > 1 ? `(${index + 1})` : ""}</option>`).join("")
               : `<option>${escapeHtml(state.device.label)}</option>`}
           </select>
-          <button class="button" data-action="scan-device">重新检测</button>
+          <button class="button" data-action="scan-device">刷新已授权设备</button>
           <button class="button primary" data-action="connect-device">连接</button>
-          <span class="device-state ${state.device.connected ? "online" : ""}">${state.device.connected ? "已连接" : "未连接"}</span>
+          <span class="device-state ${state.device.connected ? "online" : ""}">${deviceStatus}</span>
         </div>
       </header>
       <nav class="main-tabs" aria-label="主功能">
@@ -247,7 +252,7 @@ function renderLibrary() {
       ${state.libraryMode === "planet" ? renderPlanet(songs.slice(0, 20)) : renderSongList(songs)}
       ${renderSongDetail(song)}
     </div>
-    <div class="slot-heading"><strong>拖到你的键盘</strong><span>把歌曲拖到 K1～K3，确认后直接点击对应的保存按钮。</span></div>
+    <div class="slot-heading"><strong>拖到你的键盘</strong><span>把歌曲拖到 K1～K3，或先选歌再点击键位卡片；放入歌曲后保存按钮可用。</span></div>
     <section class="slot-row">${[0, 1, 2].map(renderSlot).join("")}</section>`;
 }
 
@@ -314,7 +319,7 @@ function renderMapping() {
         ${state.mappings.map((item, slot) => `<div class="summary-row"><span>K${slot + 1}</span><strong>${state.keyboardLoaded ? escapeHtml(mappingText(item) === "旋转陀螺" ? `旋转陀螺 · 扭矩 ${item.spinCounts} · ${item.spinCycleMs} ms/圈` : item.role === "key" ? `输出 ${mappingText(item)}` : mappingText(item)) : "未读取"}</strong></div>`).join("")}
         <div class="write-state"><span>设备写入</span><b>${escapeHtml(state.keyboardMessage)}</b></div>
         <button class="button" data-action="reload-mapping" ${state.device.connected && !state.upgrading ? "" : "disabled"}>重新读取</button>
-        <button class="button primary" data-action="save-mapping" ${ready && state.keyboardDirty ? "" : "disabled"}>保存到键盘</button>
+        <button class="button primary" data-action="save-mapping" ${ready ? "" : "disabled"}>保存到键盘</button>
       </aside>
     </div>`;
 }
@@ -327,14 +332,17 @@ function renderLed() {
     <section class="led-card"><h2>控制模式</h2><select id="led-mode" ${disabled}>${[[0, "按下点亮"], [1, "常亮"], [2, "流水灯"]].map(([mode, label]) => `<option value="${mode}" ${led.mode === mode ? "selected" : ""}>${label}</option>`).join("")}</select><label><input id="led-random" type="checkbox" ${led.randomColors ? "checked" : ""} ${ready && led.mode === 2 ? "" : "disabled"}> 流水时使用随机颜色</label><p>${["按下对应按键时点亮，松开后熄灭。", "三个灯以最高 50% 亮度常亮。", "按 K1 → K2 → K3 顺序流水。"][led.mode]}</p></section>
     <section class="led-card"><h2>按键颜色</h2>${led.colors.map((color, slot) => `<label class="led-color">K${slot + 1} <input type="color" data-led-color="${slot}" value="#${color.map((value) => value.toString(16).padStart(2, "0")).join("")}" ${ready && !(led.mode === 2 && led.randomColors) ? "" : "disabled"}> RGB ${color.join(", ")}</label>`).join("")}</section>
     <section class="led-card"><h2>亮度保护</h2><p>所有模式的最大亮度固定为 50%（128/255）。</p></section>
-    <div class="led-actions"><span>${escapeHtml(state.ledMessage)}</span><button class="button primary" data-action="reload-led" ${state.device.connected && !state.upgrading ? "" : "disabled"}>重新读取</button><button class="button primary" data-action="save-led" ${ready && state.ledDirty ? "" : "disabled"}>保存到键盘</button></div>`;
+    <div class="led-actions"><span>${escapeHtml(state.ledMessage)}</span><button class="button primary" data-action="reload-led" ${state.device.connected && !state.upgrading ? "" : "disabled"}>重新读取</button><button class="button primary" data-action="save-led" ${ready ? "" : "disabled"}>保存到键盘</button></div>`;
 }
 
 function renderDevice() {
   const firmware = state.firmware;
+  const bootMode = state.device.mode === "boot" && !state.device.connected;
+  const updateAction = state.pendingApp ? "complete-update" : state.pendingBoot ? "continue-update" : "start-update";
+  const updateLabel = state.upgrading ? "正在更新" : state.pendingApp ? "连接 APP 并完成" : state.pendingBoot ? "连接 BOOT 并继续" : "开始更新";
   return `
     ${pageHeading("设备与支持", "设备维护", "查看实体按键状态，或在需要时更新键盘固件。")}
-    <section class="device-facts"><div><span>APP 固件</span><strong>${firmwareVersion(state.device.firmwareVersion)}</strong></div><div><span>BOOT 固件</span><strong>${firmwareVersion(state.device.bootVersion)}</strong></div><div><span>键位配置</span><strong>${state.keyboardLoaded ? `格式 V${state.keyboardFormat} · 第 ${state.keyboardGeneration} 代` : "未读取"}</strong></div><div><span>LED 配置</span><strong>${state.ledLoaded ? `第 ${state.ledGeneration} 代` : "未读取"}</strong></div></section>
+    <section class="device-facts"><div><span>APP 固件</span><strong>${bootMode ? "更新模式" : firmwareVersion(state.device.firmwareVersion)}</strong></div><div><span>BOOT 固件</span><strong>${bootMode ? "连接 APP 后读取" : firmwareVersion(state.device.bootVersion)}</strong></div><div><span>键位配置</span><strong>${state.keyboardLoaded ? `格式 V${state.keyboardFormat} · 第 ${state.keyboardGeneration} 代` : "未读取"}</strong></div><div><span>LED 配置</span><strong>${state.ledLoaded ? `第 ${state.ledGeneration} 代` : "未读取"}</strong></div></section>
     <fieldset class="key-status"><legend>键盘按键状态</legend>${[0, 1, 2].map((slot) => {
       const pressed = state.device.connected && Boolean(state.device.keyMask & (1 << slot));
       const mapping = state.savedMappings?.[slot];
@@ -342,9 +350,10 @@ function renderDevice() {
     }).join("")}</fieldset>
     <section class="firmware-card">
       <h2>固件更新</h2><p>默认加载随网页发布的 APP 加密升级包（.enc.hex），也可手动选择新包。浏览器会在本机解密并核验版本、大小与认证标签，再通过 USB 写入。更新保留 K1～K3 已存音乐；中断后可重新选同一文件继续。</p>
+      <p>若新板只烧录了 BOOT，顶部“连接”无法连接正常键盘功能。可直接点击下方“开始更新”，再按提示选择 BOOT 设备并完成 APP 更新。</p>
       <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择加密升级包"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".enc.hex,.hex,text/plain"></label></div>
       <div class="progress"><span style="width:${firmware?.progress || 0}%"></span></div>
-      <button class="button primary update-button" data-action="${state.pendingBoot ? "continue-update" : "start-update"}" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : state.pendingBoot ? "连接 BOOT 并继续" : "开始更新"}</button>
+      <button class="button primary update-button" data-action="${updateAction}" ${(state.pendingApp || firmware?.valid) && !state.upgrading ? "" : "disabled"}>${updateLabel}</button>
       <pre class="upgrade-log">${escapeHtml(firmware?.log?.join("\n") || "更新过程会显示在这里")}</pre>
     </section>`;
 }
@@ -501,7 +510,7 @@ function handleAction(button) {
   if (action === "preview-song") return previewSong(button.dataset.songId);
   if (action === "save-slot") return saveSlot(Number(button.dataset.slot));
   if (action === "scan-device") return scanDevices();
-  if (action === "connect-device") return connectDevice();
+  if (action === "connect-device") return state.pendingApp ? completeFirmwareUpdate() : connectDevice();
   if (action === "reload-library") return loadCatalog(true);
   if (action === "reload-mapping") return readKeyboardConfig(true);
   if (action === "save-mapping") return saveKeyboardConfig();
@@ -514,6 +523,7 @@ function handleAction(button) {
   if (action === "apply-mapping") { markKeyboardDirty(); showToast(`K${state.mappingSlot + 1} 已应用到本次配置`); return; }
   if (action === "start-update") return startFirmwareUpdate();
   if (action === "continue-update") return continueFirmwareUpdate();
+  if (action === "complete-update") return completeFirmwareUpdate();
 }
 
 function assignSong(slot, songId) {
@@ -549,11 +559,17 @@ async function previewSong(songId) {
 
 async function scanDevices() {
   try {
-    state.devices = await hid.authorizedDevices();
+    const authorized = await hid.authorizedDevices({ includeBoot: true });
+    const appDevices = authorized.filter((device) => device.productId !== BOOT_PID);
+    const bootDevices = authorized.filter((device) => device.productId === BOOT_PID);
+    state.devices = appDevices.length ? appDevices : bootDevices;
     state.selectedDeviceIndex = Math.min(state.selectedDeviceIndex, Math.max(0, state.devices.length - 1));
-    state.device.label = state.devices.length ? (state.devices[0].productName || "SJZ 键盘") : (webHidSupported ? "未发现 SJZ 键盘" : "浏览器不支持 WebHID");
+    if (!state.device.connected) state.device.mode = appDevices.length ? "none" : bootDevices.length ? "boot" : "none";
+    state.device.label = appDevices.length ? (appDevices[0].productName || "SJZ 键盘")
+      : bootDevices.length ? "SJZ 键盘（更新模式）" : (webHidSupported ? "点击连接检测设备" : "浏览器不支持 WebHID");
     render();
-    if (state.devices.length) showToast(`发现 ${state.devices.length} 台已授权设备`);
+    if (appDevices.length) showToast(`发现 ${appDevices.length} 台已授权键盘`);
+    else if (bootDevices.length) showToast(`发现 ${bootDevices.length} 台更新模式设备`);
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -562,25 +578,58 @@ async function scanDevices() {
 async function connectDevice() {
   try {
     const selectedDevice = state.devices[state.selectedDeviceIndex] || null;
+    if (selectedDevice?.productId === BOOT_PID) {
+      state.device.mode = "boot";
+      state.device.label = "SJZ 键盘（更新模式）";
+      state.view = "device";
+      render();
+      showToast("键盘正在等待 APP 更新，请使用设备维护中的固件更新", "success");
+      return;
+    }
     const status = await hid.connect({ request: !selectedDevice, selectedDevice });
-    applyConnectionStatus(status);
-    state.devices = [hid.device];
-    state.selectedDeviceIndex = 0;
-    state.keyboardLoaded = false;
-    state.ledLoaded = false;
-    render();
-    await readKeyboardConfig(false);
-    await readLedConfig(false);
-    startStatusPolling();
-    showToast("SJZ 键盘已连接", "success");
+    await finishAppConnection(status);
+    reportAppConnection("SJZ 键盘已连接");
   } catch (error) {
+    if (error.bootMode) {
+      await scanDevices();
+      state.device.mode = "boot";
+      state.device.label = "SJZ 键盘（更新模式）";
+      state.view = "device";
+      render();
+    }
     showToast(error.message || "连接已取消", "error");
   }
+}
+
+async function finishAppConnection(status) {
+  applyConnectionStatus(status);
+  state.devices = [hid.device];
+  state.selectedDeviceIndex = 0;
+  state.savedMappings = null;
+  state.keyboardLoaded = false;
+  state.ledLoaded = false;
+  render();
+  await readKeyboardConfig(false);
+  await readLedConfig(false);
+  if (!state.device.connected) throw new Error("APP 在读取配置时断开，请重新连接");
+  startStatusPolling();
+  state.pendingApp = false;
+}
+
+function reportAppConnection(successMessage) {
+  const unread = [];
+  if (!state.device.firmwareVersion) unread.push("APP 版本");
+  if (!state.device.bootVersion) unread.push("BOOT 版本");
+  if (!state.keyboardLoaded) unread.push("键位配置");
+  if (!state.ledLoaded) unread.push("灯光配置");
+  if (unread.length) showToast(`设备已连接，但${unread.join("、")}未读取；请重新连接或在对应页面重读`, "error");
+  else showToast(successMessage, "success");
 }
 
 function applyConnectionStatus(status) {
   state.device = {
       connected: true,
+      mode: "app",
       label: hid.device.productName || "SJZ 键盘",
       validMask: status.validMask,
       keyMask: status.keyMask,
@@ -697,6 +746,8 @@ function startStatusPolling() {
       const oldKeyMask = state.device.keyMask;
       const oldMusicIds = state.device.musicIds;
       const oldValidMask = state.device.validMask;
+      const oldFirmwareVersion = state.device.firmwareVersion;
+      const oldBootVersion = state.device.bootVersion;
       Object.assign(state.device, {
         validMask: status.validMask, keyMask: status.keyMask, playing: status.playing,
         activeSlot: status.activeSlot, firmwareVersion: status.firmwareVersion,
@@ -706,6 +757,7 @@ function startStatusPolling() {
       });
       if (state.view === "device" &&
           (oldKeyMask !== status.keyMask || oldValidMask !== status.validMask ||
+            oldFirmwareVersion !== status.firmwareVersion || oldBootVersion !== status.bootVersion ||
             oldMusicIds.some((id, slot) => id !== status.musicIds[slot]))) render();
       if (state.view === "mapping" && oldKeyMask !== status.keyMask) render();
       if (state.view === "library" &&
@@ -844,6 +896,41 @@ async function continueFirmwareUpdate() {
   }
 }
 
+async function completeFirmwareUpdate() {
+  if (!state.pendingApp || state.upgrading) return;
+  // Open the APP chooser during this click; WebHID requires a user gesture.
+  const appPromise = hid.connect({ request: true, appOnly: true });
+  state.upgrading = true;
+  render();
+  try {
+    const status = await appPromise;
+    await finishAppConnection(status);
+    state.firmware.log.push("APP 已连接并读取固件版本，固件升级完成");
+    reportAppConnection("固件升级完成");
+  } catch (error) {
+    markAppReconnectPending(error);
+    state.firmware.log.push(`APP 连接未完成：${error.message}`);
+    showToast(`APP 连接未完成：${error.message}`, "error");
+  } finally {
+    state.upgrading = false;
+    render();
+  }
+}
+
+function markAppReconnectPending(error) {
+  state.pendingApp = true;
+  state.devices = [];
+  state.selectedDeviceIndex = 0;
+  state.device = { ...state.device, connected: false, mode: "none", label: "等待连接 APP",
+    firmwareVersion: 0, bootVersion: 0, keyMask: null };
+  state.savedMappings = null;
+  state.keyboardLoaded = false;
+  state.keyboardMessage = "连接 APP 后重新读取";
+  state.ledLoaded = false;
+  state.ledMessage = "连接 APP 后重新读取";
+  state.firmware.log.push(`固件已通过 CRC32 校验；${error.message}。点击“连接 APP 并完成”重试`);
+}
+
 async function performFirmwareUpload(bootloader) {
   try {
     await uploadFirmware(bootloader, state.firmware, (percent, message) => {
@@ -852,17 +939,22 @@ async function performFirmwareUpload(bootloader) {
       render();
     });
   } finally {
-    if (bootloader.opened) await bootloader.close();
+    if (bootloader.opened) {
+      try { await bootloader.close(); } catch { /* BOOT may have disconnected while starting APP. */ }
+    }
   }
   state.firmware.log.push("设备端写入与 CRC32 校验成功；等待 APP 重新连接");
-  await waitForAppReenumeration();
-  const status = await hid.connect({ request: false });
-  applyConnectionStatus(status);
-  await readKeyboardConfig(false);
-  await readLedConfig(false);
-  startStatusPolling();
+  try {
+    const appDevice = await waitForAppReenumeration();
+    const status = await hid.connect({ selectedDevice: appDevice });
+    await finishAppConnection(status);
+  } catch (error) {
+    markAppReconnectPending(error);
+    showToast("固件已通过校验；请连接 APP 完成状态读取", "error");
+    return;
+  }
   state.firmware.log.push("APP 已稳定重连，固件升级完成");
-  showToast("固件升级完成", "success");
+  reportAppConnection("固件升级完成");
 }
 
 async function loadCatalog(reload = false) {
