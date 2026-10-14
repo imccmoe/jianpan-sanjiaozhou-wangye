@@ -216,13 +216,16 @@ export function compileSong(song) {
   const durationMs = events.reduce((sum, event) => sum + event.durationMs, 0);
   const header = new Uint8Array(HEADER_SIZE);
   writeU32(header, 0, MUSIC_MAGIC);
-  writeU16(header, 4, 1);
+  writeU16(header, 4, 2);
   writeU16(header, 6, HEADER_SIZE);
   writeU16(header, 8, events.length);
   writeU16(header, 10, gapMs);
   writeU32(header, 12, crc32(eventData));
   writeU32(header, 16, durationMs);
   writeU32(header, 20, rhythm ? 1 : 0);
+  const musicId = Number(song.music_id || 0);
+  if (!Number.isInteger(musicId) || musicId < 0 || musicId > 0x7fffffff) throw new Error("音乐编号无效");
+  writeU32(header, 24, musicId);
   writeU32(header, 28, crc32(header.slice(0, 28)));
   const packageBytes = new Uint8Array(header.length + eventData.length);
   packageBytes.set(header);

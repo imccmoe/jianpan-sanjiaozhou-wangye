@@ -1,7 +1,9 @@
-import { compileSong, crc32, formatDuration, startPreview, stopPreview } from "./music-engine.js";
-import { inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, webHidSupported } from "./device.js";
+import { compileSong, formatDuration, startPreview, stopPreview } from "./music-engine.js";
+import { inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, waitForAppReenumeration, webHidSupported } from "./device.js";
+import { decryptFirmware } from "./firmware.js";
+import { KEY_USAGES, spinCounts } from "./device-config.js";
 
-const APP_VERSION = "1.08";
+const APP_VERSION = "1.15";
 const TEST_STAGE_LABELS = {
   1: "阶段 1 · 新接入未测试",
   2: "阶段 2 · Qt 试听通过",
@@ -14,16 +16,11 @@ const PLANET_POSITIONS = [
   [12, 70, 0.54], [92, 76, 0.55], [33, 18, 0.52], [51, 83, 0.56], [81, 82, 0.58],
 ];
 const PLANET_COLORS = ["#86ddd4", "#aeb9e7", "#f2aab3", "#8fd4cb", "#9fd9f1", "#d8bb75"];
-const KEY_OPTIONS = [
-  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((key) => [key, key]),
-  ["Space", "Space"], ["Enter", "Enter"], ["Esc", "Esc"], ["Tab", "Tab"],
-  ["↑", "Up"], ["↓", "Down"], ["←", "Left"], ["→", "Right"],
-  ...Array.from({ length: 12 }, (_, index) => [`F${index + 1}`, `F${index + 1}`]),
-];
+const KEY_OPTIONS = Object.keys(KEY_USAGES).map((key) => [key, key]);
 const DEFAULT_MAPPINGS = [
-  { mode: "single", modifiers: [], key: "A" },
-  { mode: "single", modifiers: [], key: "Space" },
-  { mode: "single", modifiers: [], key: "Enter" },
+  { role: "key", mode: "single", modifiers: [], key: "A", spinCounts: 12000, spinCycleMs: 500, mouseSensitivity: 3, horizontalSensitivity: 1 },
+  { role: "key", mode: "single", modifiers: [], key: "Space", spinCounts: 12000, spinCycleMs: 500, mouseSensitivity: 3, horizontalSensitivity: 1 },
+  { role: "key", mode: "single", modifiers: [], key: "Enter", spinCounts: 12000, spinCycleMs: 500, mouseSensitivity: 3, horizontalSensitivity: 1 },
 ];
 
 const state = {
@@ -34,36 +31,62 @@ const state = {
   stageOverrides: readStageOverrides(),
   songs: [],
   selectedSongId: null,
-  slotSongIds: readStorage("gxm_library_slots", [null, null, null]),
+  slotSongIds: readStorage("sjz_library_slots", [null, null, null], "gxm_library_slots"),
   previewSongId: null,
   mappingSlot: 0,
-  mappings: readStorage("gxm_key_mappings", DEFAULT_MAPPINGS),
+  mappings: readStorage("sjz_key_mappings", DEFAULT_MAPPINGS, "gxm_key_mappings")
+    .map((mapping, slot) => ({ ...DEFAULT_MAPPINGS[slot], ...mapping })),
+  savedMappings: null,
+  keyboardLoaded: false,
+  keyboardDirty: false,
+  keyboardGeneration: null,
+  keyboardFormat: 1,
+  keyboardMessage: "连接键盘后读取当前工作模式和三个键位",
+  led: { mode: 0, randomColors: false, colors: [[255, 64, 64], [80, 220, 120], [72, 128, 255]] },
+  ledLoaded: false,
+  ledDirty: false,
+  ledGeneration: null,
+  ledMessage: "连接键盘后读取当前灯光设置",
   devices: [],
+  selectedDeviceIndex: 0,
   device: {
     connected: false,
-    label: webHidSupported ? "未发现 GXM 键盘" : "浏览器不支持 WebHID",
+    label: webHidSupported ? "未发现 SJZ 键盘" : "浏览器不支持 WebHID",
     validMask: 0,
     keyMask: null,
     playing: false,
     activeSlot: -1,
     firmwareVersion: 0,
+    bootVersion: 0,
+    musicIds: [0, 0, 0],
+    keyConfigSupported: false,
+    ledConfigFormat: 0,
+    ledGeneration: 0,
   },
   uploadingSlot: -1,
   uploadPercent: 0,
   firmware: null,
   upgrading: false,
+  pendingBoot: null,
 };
 
 const hid = new MusicHidDevice(() => {
   state.device = { ...state.device, connected: false, label: "设备已断开", keyMask: null, playing: false };
+  state.savedMappings = null;
+  state.keyboardLoaded = false;
+  state.keyboardMessage = "设备已断开";
+  state.ledLoaded = false;
+  state.ledMessage = "设备已断开";
   render();
 });
 let toastTimer = 0;
 let statusTimer = 0;
+let statusBusy = false;
+let configBusy = false;
 
-function readStorage(key, fallback) {
+function readStorage(key, fallback, legacyKey = null) {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || "null");
+    const value = JSON.parse(localStorage.getItem(key) || (legacyKey && localStorage.getItem(legacyKey)) || "null");
     return Array.isArray(value) && value.length === 3 ? value : structuredClone(fallback);
   } catch {
     return structuredClone(fallback);
@@ -72,7 +95,7 @@ function readStorage(key, fallback) {
 
 function readStageOverrides() {
   try {
-    const value = JSON.parse(localStorage.getItem("gxm_test_stage_overrides") || "{}");
+    const value = JSON.parse(localStorage.getItem("sjz_test_stage_overrides") || "{}");
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   } catch {
     return {};
@@ -89,9 +112,9 @@ function stageLabel(song) {
 }
 
 function persist() {
-  localStorage.setItem("gxm_library_slots", JSON.stringify(state.slotSongIds));
-  localStorage.setItem("gxm_key_mappings", JSON.stringify(state.mappings));
-  localStorage.setItem("gxm_test_stage_overrides", JSON.stringify(state.stageOverrides));
+  localStorage.setItem("sjz_library_slots", JSON.stringify(state.slotSongIds));
+  localStorage.setItem("sjz_key_mappings", JSON.stringify(state.mappings));
+  localStorage.setItem("sjz_test_stage_overrides", JSON.stringify(state.stageOverrides));
 }
 
 function escapeHtml(value) {
@@ -137,15 +160,31 @@ function sourceTag(song) {
 }
 
 function mappingText(mapping) {
+  if (mapping.role === "spin") return "旋转陀螺";
+  if (mapping.role === "music") return "播放 / 暂停";
   const parts = mapping.mode === "combo" ? [...mapping.modifiers] : [];
   parts.push(mapping.key);
   return parts.join(" + ");
 }
 
+function firmwareVersion(value) {
+  return value ? `V${(value >>> 16) & 0xffff}.${String(value & 0xffff).padStart(2, "0")}` : "未读取";
+}
+
+function deviceSongText(slot) {
+  if (!state.device.connected) return "未连接";
+  if (!(state.device.validMask & (1 << slot))) return "空槽";
+  const id = state.device.musicIds[slot];
+  if (!id) return "旧版曲目（无编号）";
+  const song = state.songs.find((item) => item.music_id === id);
+  return song ? `${song.title} · #${id}` : `未知曲目 #${id}`;
+}
+
 function footerText() {
-  if (state.view === "mapping") return "键位配置仅保存在本次预览中 · 设备写入将在固件支持后开放";
+  if (state.view === "mapping") return "每颗键可选择输出键值、播放 / 暂停或旋转陀螺；保存后断电仍保留";
+  if (state.view === "led") return "灯光设置只在点击“保存到键盘”后写入，所有模式最高 50% 亮度";
   if (state.view === "device") return "设备维护 · 查看按键状态并在需要时更新固件";
-  if (state.view === "about") return `GXM 音乐键盘 ${APP_VERSION}`;
+  if (state.view === "about") return `SJZ 键盘 ${APP_VERSION}`;
   return "准备就绪 · 把音乐星球拖到 K1～K3，然后直接保存到键盘";
 }
 
@@ -154,12 +193,12 @@ function render() {
   app.innerHTML = `
     <div class="app-shell">
       <header class="topbar">
-        <div class="brand-block"><strong>GXM</strong><span>把喜欢的音乐装进键盘</span></div>
+        <div class="brand-block"><strong>SJZ</strong><span>把喜欢的音乐装进键盘</span></div>
         <div class="device-controls">
           <label for="device-select">我的设备</label>
           <select id="device-select" aria-label="我的设备">
             ${state.devices.length
-              ? state.devices.map((device, index) => `<option value="${index}">${escapeHtml(device.productName || "GXM 键盘")}</option>`).join("")
+              ? state.devices.map((device, index) => `<option value="${index}" ${state.selectedDeviceIndex === index ? "selected" : ""}>${escapeHtml(device.productName === "Music Pad" ? "SJZ 键盘" : device.productName || "SJZ 键盘")} ${state.devices.length > 1 ? `(${index + 1})` : ""}</option>`).join("")
               : `<option>${escapeHtml(state.device.label)}</option>`}
           </select>
           <button class="button" data-action="scan-device">重新检测</button>
@@ -168,7 +207,7 @@ function render() {
         </div>
       </header>
       <nav class="main-tabs" aria-label="主功能">
-        ${[["library", "音乐星球"], ["mapping", "键位设置"], ["device", "设备维护"], ["about", "关于"]]
+        ${[["library", "音乐星球"], ["mapping", "键位设置"], ["led", "灯光设置"], ["device", "设备维护"], ["about", "关于"]]
           .map(([id, label]) => `<button class="main-tab ${state.view === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("")}
       </nav>
       <main class="page">${renderPage()}</main>
@@ -179,6 +218,7 @@ function render() {
 
 function renderPage() {
   if (state.view === "mapping") return renderMapping();
+  if (state.view === "led") return renderLed();
   if (state.view === "device") return renderDevice();
   if (state.view === "about") return renderAbout();
   return renderLibrary();
@@ -243,54 +283,78 @@ function renderSlot(slot) {
 
 function renderMapping() {
   const mapping = state.mappings[state.mappingSlot];
+  const ready = state.device.connected && state.keyboardLoaded && !state.upgrading;
+  const locked = ready ? "" : "disabled";
+  const keyLocked = ready && mapping.role !== "spin" ? "" : "disabled";
+  const options = KEY_OPTIONS.some(([, value]) => value === mapping.key) ? KEY_OPTIONS : [...KEY_OPTIONS, [mapping.key, mapping.key]];
   return `
-    ${pageHeading("键盘模式", "键位设置", "为三颗实体按键设计单键或组合键，先在这里完成你的键盘布局。", `<span class="preview-chip">UI 预览</span>`)}
-    <section class="keyboard-deck"><div><strong>GXM 三键键盘</strong><span>选择一颗键帽进行设置</span></div>${state.mappings.map((item, slot) => `<button class="keycap ${state.mappingSlot === slot ? "active" : ""}" data-mapping-slot="${slot}"><b>K${slot + 1}</b><span>${escapeHtml(mappingText(item))}</span></button>`).join("")}</section>
+    ${pageHeading("键盘模式", "键位设置", "每颗键可选输出键值、播放 / 暂停或旋转陀螺。保存后立即生效。", `<span class="preview-chip">${state.keyboardLoaded ? "已连接" : "等待连接"}</span>`)}
+    <section class="keyboard-deck"><div><strong>SJZ 三键键盘</strong><span>选择一颗键帽进行设置</span></div>${state.mappings.map((item, slot) => `<button class="keycap ${state.mappingSlot === slot ? "active" : ""} ${state.device.keyMask & (1 << slot) ? "physical-down" : ""}" data-mapping-slot="${slot}" ${locked}><b>K${slot + 1}</b><span>${state.keyboardLoaded ? escapeHtml(mappingText(item)) : "未读取"}</span></button>`).join("")}</section>
     <div class="mapping-layout">
       <section class="mapping-editor">
         <div class="section-heading"><h2>编辑 K${state.mappingSlot + 1}</h2><span>修改会暂存在本次配置中</span></div>
-        <div class="form-row"><label>触发方式</label><div class="segmented"><button class="${mapping.mode === "single" ? "active" : ""}" data-map-mode="single">单键</button><button class="${mapping.mode === "combo" ? "active" : ""}" data-map-mode="combo">组合键</button></div></div>
-        <div class="form-row"><label>修饰键</label><div class="modifier-row">${["Ctrl", "Shift", "Alt", "Win"].map((name) => `<label><input type="checkbox" data-modifier="${name}" ${mapping.modifiers.includes(name) ? "checked" : ""} ${mapping.mode === "single" ? "disabled" : ""}> ${name}</label>`).join("")}</div></div>
-        <div class="form-row"><label for="key-capture">按键录入</label><div class="key-entry"><input id="key-capture" value="${escapeHtml(mappingText(mapping))}" readonly><select id="key-select">${KEY_OPTIONS.map(([label, value]) => `<option value="${value}" ${mapping.key === value ? "selected" : ""}>${label}</option>`).join("")}</select></div></div>
+        <div class="form-row"><label>这颗键</label><div class="role-row">${[["key", "输出键值"], ["music", "播放 / 暂停"], ["spin", "旋转陀螺"]].map(([role, label]) => `<button class="${mapping.role === role ? "active" : ""}" data-role="${role}" ${locked}>${label}</button>`).join("")}</div></div>
+        <div class="spin-grid ${mapping.role === "spin" ? "" : "inactive"}"><label>鼠标灵敏度<input id="mouse-sensitivity" type="number" min="0.1" max="10" step="0.1" value="${mapping.mouseSensitivity}" ${ready && mapping.role === "spin" ? "" : "disabled"}></label><label>水平灵敏度<input id="horizontal-sensitivity" type="number" min="0.1" max="6" step="0.1" value="${mapping.horizontalSensitivity}" ${ready && mapping.role === "spin" ? "" : "disabled"}></label><label>旋转扭矩<input type="number" value="${mapping.spinCounts}" readonly></label><label>旋转速度（ms/圈）<input id="spin-cycle" type="number" min="200" max="3000" step="20" value="${mapping.spinCycleMs}" ${ready && mapping.role === "spin" ? "" : "disabled"}></label></div>
+        <p class="spin-note">鼠标灵敏度 × 水平灵敏度 × 扭矩 = 36000；按住实体键持续旋转，松开停止。APP V1.10 起内置轻微垂直补偿。</p>
+        <div class="form-row"><label>触发方式</label><div class="segmented"><button class="${mapping.mode === "single" ? "active" : ""}" data-map-mode="single" ${keyLocked}>单键</button><button class="${mapping.mode === "combo" ? "active" : ""}" data-map-mode="combo" ${keyLocked}>组合键</button></div></div>
+        <div class="form-row"><label>修饰键</label><div class="modifier-row">${["Ctrl", "Shift", "Alt", "Win"].map((name) => `<label><input type="checkbox" data-modifier="${name}" ${mapping.modifiers.includes(name) ? "checked" : ""} ${mapping.mode === "single" || keyLocked ? "disabled" : ""}> ${name}</label>`).join("")}</div></div>
+        <div class="form-row"><label for="key-capture">按键录入</label><div class="key-entry"><input id="key-capture" value="${escapeHtml(mapping.role === "key" ? mappingText(mapping) : mapping.key)}" readonly ${keyLocked}><select id="key-select" ${keyLocked}>${options.map(([label, value]) => `<option value="${escapeHtml(value)}" ${mapping.key === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></div></div>
         <div class="output-box"><span>最终输出</span><strong>${escapeHtml(mappingText(mapping))}</strong></div>
-        <div class="editor-actions"><button class="button" data-action="reset-mapping">恢复默认</button><button class="button primary" data-action="apply-mapping">应用到当前键位</button></div>
+        <div class="editor-actions"><button class="button" data-action="reset-mapping" ${locked}>恢复默认</button><button class="button primary" data-action="apply-mapping" ${locked}>应用到当前键位</button></div>
       </section>
       <aside class="mapping-summary">
-        <h2>当前键盘布局</h2><p>三个键位会分别保留设置</p>
-        ${state.mappings.map((item, slot) => `<div class="summary-row"><span>K${slot + 1}</span><strong>${escapeHtml(mappingText(item))}</strong></div>`).join("")}
-        <div class="write-state"><span>设备写入</span><b>等待固件支持</b></div>
-        <button class="button" disabled>写入键盘</button>
+        <h2>当前键盘布局</h2><p>这里是待保存配置；设备维护显示键盘里已保存的配置</p>
+        ${state.mappings.map((item, slot) => `<div class="summary-row"><span>K${slot + 1}</span><strong>${state.keyboardLoaded ? escapeHtml(mappingText(item) === "旋转陀螺" ? `旋转陀螺 · 扭矩 ${item.spinCounts} · ${item.spinCycleMs} ms/圈` : item.role === "key" ? `输出 ${mappingText(item)}` : mappingText(item)) : "未读取"}</strong></div>`).join("")}
+        <div class="write-state"><span>设备写入</span><b>${escapeHtml(state.keyboardMessage)}</b></div>
+        <button class="button" data-action="reload-mapping" ${state.device.connected && !state.upgrading ? "" : "disabled"}>重新读取</button>
+        <button class="button primary" data-action="save-mapping" ${ready && state.keyboardDirty ? "" : "disabled"}>保存到键盘</button>
       </aside>
     </div>`;
+}
+
+function renderLed() {
+  const led = state.led;
+  const ready = state.device.connected && state.ledLoaded && !state.upgrading;
+  const disabled = ready ? "" : "disabled";
+  return `${pageHeading("RGB 灯光", "灯光设置", "选择工作方式和三个按键的颜色；只有点击“保存到键盘”才会写入设备 Flash。")}
+    <section class="led-card"><h2>控制模式</h2><select id="led-mode" ${disabled}>${[[0, "按下点亮"], [1, "常亮"], [2, "流水灯"]].map(([mode, label]) => `<option value="${mode}" ${led.mode === mode ? "selected" : ""}>${label}</option>`).join("")}</select><label><input id="led-random" type="checkbox" ${led.randomColors ? "checked" : ""} ${ready && led.mode === 2 ? "" : "disabled"}> 流水时使用随机颜色</label><p>${["按下对应按键时点亮，松开后熄灭。", "三个灯以最高 50% 亮度常亮。", "按 K1 → K2 → K3 顺序流水。"][led.mode]}</p></section>
+    <section class="led-card"><h2>按键颜色</h2>${led.colors.map((color, slot) => `<label class="led-color">K${slot + 1} <input type="color" data-led-color="${slot}" value="#${color.map((value) => value.toString(16).padStart(2, "0")).join("")}" ${ready && !(led.mode === 2 && led.randomColors) ? "" : "disabled"}> RGB ${color.join(", ")}</label>`).join("")}</section>
+    <section class="led-card"><h2>亮度保护</h2><p>所有模式的最大亮度固定为 50%（128/255）。</p></section>
+    <div class="led-actions"><span>${escapeHtml(state.ledMessage)}</span><button class="button primary" data-action="reload-led" ${state.device.connected && !state.upgrading ? "" : "disabled"}>重新读取</button><button class="button primary" data-action="save-led" ${ready && state.ledDirty ? "" : "disabled"}>保存到键盘</button></div>`;
 }
 
 function renderDevice() {
   const firmware = state.firmware;
   return `
     ${pageHeading("设备与支持", "设备维护", "查看实体按键状态，或在需要时更新键盘固件。")}
+    <section class="device-facts"><div><span>APP 固件</span><strong>${firmwareVersion(state.device.firmwareVersion)}</strong></div><div><span>BOOT 固件</span><strong>${firmwareVersion(state.device.bootVersion)}</strong></div><div><span>键位配置</span><strong>${state.keyboardLoaded ? `格式 V${state.keyboardFormat} · 第 ${state.keyboardGeneration} 代` : "未读取"}</strong></div><div><span>LED 配置</span><strong>${state.ledLoaded ? `第 ${state.ledGeneration} 代` : "未读取"}</strong></div></section>
     <fieldset class="key-status"><legend>键盘按键状态</legend>${[0, 1, 2].map((slot) => {
       const pressed = state.device.connected && Boolean(state.device.keyMask & (1 << slot));
-      return `<div class="${pressed ? "pressed" : ""}"><strong>K${slot + 1}</strong><span>${state.device.connected ? (pressed ? "按下" : "松开") : "未连接"}</span></div>`;
+      const mapping = state.savedMappings?.[slot];
+      return `<div class="${pressed ? "pressed" : ""}"><strong>K${slot + 1} · ${state.device.connected ? (pressed ? "按下" : "松开") : "未连接"}</strong><span>${mapping ? escapeHtml(mappingText(mapping)) : "配置未读取"}</span><small>${escapeHtml(deviceSongText(slot))}</small></div>`;
     }).join("")}</fieldset>
     <section class="firmware-card">
-      <h2>固件更新</h2><p>更新不会清除 K1～K3 中的音乐。升级中途断开时，可以重新选择同一文件继续。请选择项目默认 APP 文件 <code>../CH32V203C8T/obj/CH32V203C8T.hex</code>。</p>
-      <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择更新文件"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".hex,text/plain"></label></div>
+      <h2>固件更新</h2><p>选择最新版 APP 加密升级包（.enc.hex）。浏览器会在本机解密并核验版本、大小与认证标签，再通过 USB 写入。更新保留 K1～K3 已存音乐；中断后可重新选同一文件继续。</p>
+      <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择加密升级包"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".enc.hex,.hex,text/plain"></label></div>
       <div class="progress"><span style="width:${firmware?.progress || 0}%"></span></div>
-      <button class="button primary update-button" data-action="start-update" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : "开始更新"}</button>
+      <button class="button primary update-button" data-action="${state.pendingBoot ? "continue-update" : "start-update"}" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : state.pendingBoot ? "连接 BOOT 并继续" : "开始更新"}</button>
       <pre class="upgrade-log">${escapeHtml(firmware?.log?.join("\n") || "更新过程会显示在这里")}</pre>
     </section>`;
 }
 
 function renderAbout() {
   return `
-    ${pageHeading("ABOUT GXM", "关于 GXM 音乐键盘", "它如何工作，以及为什么正常的音乐演奏通常不具备外挂特征。")}
-    <section class="process-flow">${["本地乐谱", "GXM 芯片", "标准 USB HID", "游戏按键响应"].map((text, index) => `${index ? "<i>→</i>" : ""}<span>${text}</span>`).join("")}</section>
-    <section class="about-section"><h2>专业原理</h2><p>GXM 是一套独立运行的嵌入式 USB HID 音乐控制器。PC 端首先将简谱编译为带时间信息的 HID 事件序列，再通过设备通信接口写入微控制器的非易失存储器。按下 K1～K3 后，音乐播放和时序调度完全由设备端完成，并以标准键盘、鼠标 HID Report 的形式提交给操作系统。</p><p>它不申请游戏进程句柄，不读取或写入游戏内存，不注入 DLL，不修改游戏文件与网络数据，也不安装用于干预游戏的内核驱动。从系统边界看，游戏接收到的是操作系统输入栈中的标准外设事件，而不是进程内部被篡改的数据。</p></section>
-    <section class="about-section"><h2>用大白话讲</h2><p>它不像外挂那样“钻进游戏里”改东西，更像一把会照着乐谱自动按琴键的外置电子琴。歌曲存在键盘自己的芯片里，你按下 K1、K2 或 K3，它就像普通键盘一样把对应按键送给电脑；关闭 GXM 软件后，设备里的歌曲也可以独立播放。</p></section>
-    <section class="about-section caution"><h2>为什么正常演奏通常不会触发封禁</h2><p>反作弊系统重点识别的是代码注入、内存篡改、数据包修改、非法驱动和利用自动化获得竞技优势等行为。GXM 没有这些侵入式能力，它只通过标准外设通道完成音乐演奏，也不参与瞄准、移动、射击或战斗决策，因此在正常的乐器演奏场景下，通常不具备传统外挂的技术特征。</p><p>但必须说明：任何第三方硬件都不能代替游戏官方承诺“绝对不会封号”。游戏规则和反作弊策略可能更新，某些平台也可能把高精度自动输入统一视为宏。建议只用于游戏内乐器和娱乐演奏，不做无人值守循环，不绑定战斗操作，并始终遵守《三角洲行动》最新用户协议与官方公告。</p></section>`;
+    ${pageHeading("ABOUT SJZ", "关于 SJZ 键盘", "音乐演奏、键值输出与旋转陀螺由键盘端独立执行。")}
+    <section class="process-flow">${["本地曲库", "CH32 芯片", "标准 USB HID", "游戏输入响应"].map((text, index) => `${index ? "<i>→</i>" : ""}<span>${text}</span>`).join("")}</section>
+    <section class="about-section"><h2>工作方式</h2><p>网页将最新曲库中的乐谱编译成带时间信息的设备曲包，通过 USB 写入键盘 Flash。K1～K3 可以分别配置成音乐播放 / 暂停、标准键值输出或按住持续旋转。键盘通过标准 USB HID 报告向电脑发送键盘与鼠标输入；关闭网页后，已保存的音乐和配置仍能使用。</p></section>
+    <section class="about-section"><h2>关于旋转陀螺</h2><p>旋转扭矩根据鼠标灵敏度与水平灵敏度计算，每圈速度可以单独调节。固件内置轻微垂直补偿。不同游戏设置和枪械可能产生不同效果，建议在训练场校准。</p></section>
+    <section class="about-section caution"><h2>游戏规则</h2><p>游戏对自动输入与外设宏的规则可能变化；使用前请查看游戏官方现行规则。SJZ 不承诺规避反作弊检测或封禁。</p></section>`;
 }
 
 function bindEvents() {
+  document.querySelector("#device-select")?.addEventListener("change", (event) => {
+    state.selectedDeviceIndex = Number(event.target.value);
+  });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
     state.view = button.dataset.view;
     render();
@@ -342,21 +406,57 @@ function bindEvents() {
     state.mappingSlot = Number(button.dataset.mappingSlot);
     render();
   }));
+  document.querySelectorAll("[data-role]").forEach((button) => button.addEventListener("click", () => {
+    state.mappings[state.mappingSlot].role = button.dataset.role;
+    markKeyboardDirty();
+  }));
   document.querySelectorAll("[data-map-mode]").forEach((button) => button.addEventListener("click", () => {
     const mapping = state.mappings[state.mappingSlot];
     mapping.mode = button.dataset.mapMode;
     if (mapping.mode === "single") mapping.modifiers = [];
-    render();
+    markKeyboardDirty();
   }));
   document.querySelectorAll("[data-modifier]").forEach((input) => input.addEventListener("change", () => {
     const mapping = state.mappings[state.mappingSlot];
     mapping.modifiers = [...document.querySelectorAll("[data-modifier]:checked")].map((item) => item.dataset.modifier);
-    render();
+    markKeyboardDirty();
   }));
   document.querySelector("#key-select")?.addEventListener("change", (event) => {
     state.mappings[state.mappingSlot].key = event.target.value;
-    render();
+    markKeyboardDirty();
   });
+  for (const id of ["mouse-sensitivity", "horizontal-sensitivity", "spin-cycle"]) {
+    document.querySelector(`#${id}`)?.addEventListener("change", () => {
+      const mapping = state.mappings[state.mappingSlot];
+      try {
+        const mouse = Number(document.querySelector("#mouse-sensitivity").value);
+        const horizontal = Number(document.querySelector("#horizontal-sensitivity").value);
+        const cycle = Number(document.querySelector("#spin-cycle").value);
+        if (!Number.isInteger(cycle) || cycle < 200 || cycle > 3000) throw new Error("旋转速度须为 200～3000 ms/圈");
+        mapping.spinCounts = spinCounts(mouse, horizontal);
+        mapping.spinCycleMs = cycle;
+        mapping.mouseSensitivity = mouse;
+        mapping.horizontalSensitivity = horizontal;
+        markKeyboardDirty();
+      } catch (error) {
+        showToast(error.message, "error");
+        render();
+      }
+    });
+  }
+  document.querySelector("#led-mode")?.addEventListener("change", (event) => {
+    state.led.mode = Number(event.target.value);
+    markLedDirty();
+  });
+  document.querySelector("#led-random")?.addEventListener("change", (event) => {
+    state.led.randomColors = event.target.checked;
+    markLedDirty();
+  });
+  document.querySelectorAll("[data-led-color]").forEach((input) => input.addEventListener("change", () => {
+    const slot = Number(input.dataset.ledColor);
+    state.led.colors[slot] = [1, 3, 5].map((offset) => Number.parseInt(input.value.slice(offset, offset + 2), 16));
+    markLedDirty();
+  }));
   document.querySelector("#key-capture")?.addEventListener("keydown", captureKey);
   document.querySelector("#firmware-input")?.addEventListener("change", readFirmware);
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button)));
@@ -372,8 +472,21 @@ function captureKey(event) {
   mapping.key = key;
   mapping.modifiers = [event.ctrlKey && "Ctrl", event.shiftKey && "Shift", event.altKey && "Alt", event.metaKey && "Win"].filter(Boolean);
   mapping.mode = mapping.modifiers.length ? "combo" : "single";
-  render();
+  markKeyboardDirty();
   document.querySelector("#key-capture")?.focus();
+}
+
+function markKeyboardDirty() {
+  state.keyboardDirty = true;
+  state.keyboardMessage = "待保存到键盘";
+  persist();
+  render();
+}
+
+function markLedDirty() {
+  state.ledDirty = true;
+  state.ledMessage = "待保存到键盘";
+  render();
 }
 
 function handleAction(button) {
@@ -383,12 +496,17 @@ function handleAction(button) {
   if (action === "scan-device") return scanDevices();
   if (action === "connect-device") return connectDevice();
   if (action === "reload-library") return loadCatalog(true);
+  if (action === "reload-mapping") return readKeyboardConfig(true);
+  if (action === "save-mapping") return saveKeyboardConfig();
+  if (action === "reload-led") return readLedConfig(true);
+  if (action === "save-led") return saveLedConfig();
   if (action === "reset-mapping") {
     state.mappings[state.mappingSlot] = structuredClone(DEFAULT_MAPPINGS[state.mappingSlot]);
-    persist(); render(); showToast(`K${state.mappingSlot + 1} 已恢复默认设置`); return;
+    markKeyboardDirty(); showToast(`K${state.mappingSlot + 1} 已恢复默认设置`); return;
   }
-  if (action === "apply-mapping") { persist(); showToast(`K${state.mappingSlot + 1} 已应用到本次配置`); return; }
+  if (action === "apply-mapping") { markKeyboardDirty(); showToast(`K${state.mappingSlot + 1} 已应用到本次配置`); return; }
   if (action === "start-update") return startFirmwareUpdate();
+  if (action === "continue-update") return continueFirmwareUpdate();
 }
 
 function assignSong(slot, songId) {
@@ -425,9 +543,10 @@ async function previewSong(songId) {
 async function scanDevices() {
   try {
     state.devices = await hid.authorizedDevices();
-    state.device.label = state.devices.length ? (state.devices[0].productName || "GXM 键盘") : (webHidSupported ? "未发现 GXM 键盘" : "浏览器不支持 WebHID");
+    state.selectedDeviceIndex = Math.min(state.selectedDeviceIndex, Math.max(0, state.devices.length - 1));
+    state.device.label = state.devices.length ? (state.devices[0].productName || "SJZ 键盘") : (webHidSupported ? "未发现 SJZ 键盘" : "浏览器不支持 WebHID");
     render();
-    showToast(state.devices.length ? `发现 ${state.devices.length} 台已授权设备` : "没有发现已授权的 GXM 键盘");
+    if (state.devices.length) showToast(`发现 ${state.devices.length} 台已授权设备`);
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -435,47 +554,165 @@ async function scanDevices() {
 
 async function connectDevice() {
   try {
-    const status = await hid.connect({ request: true });
-    state.device = {
+    const selectedDevice = state.devices[state.selectedDeviceIndex] || null;
+    const status = await hid.connect({ request: !selectedDevice, selectedDevice });
+    applyConnectionStatus(status);
+    state.devices = [hid.device];
+    state.selectedDeviceIndex = 0;
+    state.keyboardLoaded = false;
+    state.ledLoaded = false;
+    render();
+    await readKeyboardConfig(false);
+    await readLedConfig(false);
+    startStatusPolling();
+    showToast("SJZ 键盘已连接", "success");
+  } catch (error) {
+    showToast(error.message || "连接已取消", "error");
+  }
+}
+
+function applyConnectionStatus(status) {
+  state.device = {
       connected: true,
-      label: hid.device.productName || "GXM 键盘",
+      label: hid.device.productName || "SJZ 键盘",
       validMask: status.validMask,
       keyMask: status.keyMask,
       playing: status.playing,
       activeSlot: status.activeSlot,
       firmwareVersion: status.firmwareVersion,
-    };
-    state.devices = [hid.device];
-    render();
-    startStatusPolling();
-    showToast("GXM 键盘已连接", "success");
+      bootVersion: status.bootVersion,
+      musicIds: status.musicIds,
+      keyConfigSupported: status.keyConfigSupported,
+      spinSupported: status.spinSupported,
+      ledConfigFormat: status.ledConfigFormat,
+      ledGeneration: status.ledGeneration,
+  };
+}
+
+async function readKeyboardConfig(showErrors = true) {
+  if (!state.device.connected || configBusy) return;
+  configBusy = true;
+  try {
+    const config = await hid.getKeyboardConfig();
+    const mappings = config.mappings.map((item, slot) => {
+      const existing = state.mappings[slot];
+      if (item.role === "spin" && existing?.role === "spin" && existing.spinCounts === item.spinCounts) {
+        return { ...item, mouseSensitivity: existing.mouseSensitivity,
+          horizontalSensitivity: existing.horizontalSensitivity };
+      }
+      return item;
+    });
+    state.mappings = mappings;
+    state.savedMappings = structuredClone(mappings);
+    state.keyboardGeneration = config.generation;
+    state.keyboardFormat = config.formatVersion;
+    state.keyboardLoaded = true;
+    state.keyboardDirty = false;
+    state.keyboardMessage = `已读取第 ${config.generation} 代配置`;
+    persist();
   } catch (error) {
-    showToast(error.message || "连接已取消", "error");
+    state.keyboardLoaded = false;
+    state.savedMappings = null;
+    state.keyboardMessage = `读取失败：${error.message}`;
+    if (showErrors) showToast(state.keyboardMessage, "error");
+  } finally {
+    configBusy = false;
+    render();
+  }
+}
+
+async function saveKeyboardConfig() {
+  if (!state.device.connected || !state.keyboardLoaded || configBusy) return;
+  configBusy = true;
+  try {
+    const saved = await hid.setKeyboardConfig(state.mappings, state.keyboardFormat);
+    state.keyboardGeneration = saved.generation;
+    state.keyboardFormat = saved.formatVersion;
+    state.savedMappings = structuredClone(state.mappings);
+    state.keyboardDirty = false;
+    state.keyboardMessage = `已保存第 ${saved.generation} 代配置`;
+    showToast("键位设置已保存到键盘", "success");
+  } catch (error) {
+    state.keyboardMessage = `保存失败：${error.message}`;
+    showToast(state.keyboardMessage, "error");
+  } finally {
+    configBusy = false;
+    render();
+  }
+}
+
+async function readLedConfig(showErrors = true) {
+  if (!state.device.connected || configBusy) return;
+  configBusy = true;
+  try {
+    const config = await hid.getLedConfig();
+    state.led = { mode: config.mode, randomColors: config.randomColors, colors: config.colors };
+    state.ledLoaded = true;
+    state.ledDirty = false;
+    state.ledGeneration = config.generation;
+    state.ledMessage = `已读取第 ${config.generation} 代配置`;
+  } catch (error) {
+    state.ledLoaded = false;
+    state.ledMessage = `读取失败：${error.message}`;
+    if (showErrors) showToast(state.ledMessage, "error");
+  } finally {
+    configBusy = false;
+    render();
+  }
+}
+
+async function saveLedConfig() {
+  if (!state.device.connected || !state.ledLoaded || configBusy) return;
+  configBusy = true;
+  try {
+    const saved = await hid.setLedConfig(state.led);
+    state.led = { mode: saved.mode, randomColors: saved.randomColors, colors: saved.colors };
+    state.ledGeneration = saved.generation;
+    state.ledDirty = false;
+    state.ledMessage = `已保存第 ${saved.generation} 代配置`;
+    showToast("灯光设置已保存到键盘", "success");
+  } catch (error) {
+    state.ledMessage = `保存失败：${error.message}`;
+    showToast(state.ledMessage, "error");
+  } finally {
+    configBusy = false;
+    render();
   }
 }
 
 function startStatusPolling() {
   window.clearInterval(statusTimer);
   statusTimer = window.setInterval(async () => {
-    if (!state.device.connected || state.upgrading) return;
+    if (!state.device.connected || state.upgrading || state.uploadingSlot >= 0 || statusBusy || configBusy) return;
+    statusBusy = true;
     try {
       const status = await hid.getStatus();
+      const oldKeyMask = state.device.keyMask;
+      const oldMusicIds = state.device.musicIds;
       Object.assign(state.device, {
         validMask: status.validMask, keyMask: status.keyMask, playing: status.playing,
         activeSlot: status.activeSlot, firmwareVersion: status.firmwareVersion,
+        bootVersion: status.bootVersion, musicIds: status.musicIds,
+        keyConfigSupported: status.keyConfigSupported, spinSupported: status.spinSupported,
+        ledConfigFormat: status.ledConfigFormat, ledGeneration: status.ledGeneration,
       });
-      if (state.view === "device") render();
+      if (state.view === "device" &&
+          (oldKeyMask !== status.keyMask || oldMusicIds.some((id, slot) => id !== status.musicIds[slot]))) render();
+      if (state.view === "mapping" && oldKeyMask !== status.keyMask) render();
+      if (state.ledLoaded && !state.ledDirty && status.ledGeneration !== state.ledGeneration) await readLedConfig(false);
     } catch {
       // A transient status miss does not disconnect a healthy HID handle.
+    } finally {
+      statusBusy = false;
     }
-  }, 800);
+  }, 180);
 }
 
 async function saveSlot(slot) {
   const song = slotSong(slot);
   if (!song) return;
   if (!state.device.connected) {
-    showToast("请先在右上角连接 GXM 键盘", "error");
+    showToast("请先在右上角连接 SJZ 键盘", "error");
     return;
   }
   state.uploadingSlot = slot;
@@ -487,6 +724,8 @@ async function saveSlot(slot) {
       render();
     });
     state.device.validMask = status.validMask;
+    const confirmed = await hid.getStatus();
+    state.device.musicIds = confirmed.musicIds;
     showToast(`保存完成，《${song.title}》已经放进 K${slot + 1}`, "success");
   } catch (error) {
     showToast(`保存失败：${error.message}`, "error");
@@ -496,76 +735,17 @@ async function saveSlot(slot) {
   }
 }
 
-function firmwareVersionFromName(name) {
-  const match = name.match(/(?:^|[^a-z0-9])v(\d+)\.(\d+)/i);
-  return match ? ((Number(match[1]) << 16) | Number(match[2])) >>> 0 : 0;
-}
-
-function parseIntelHex(text, name) {
-  const APP_BASE = 0x3100;
-  const APP_END = 0xd000;
-  const memory = new Map();
-  let upper = 0;
-  let eof = false;
-  let mode = null;
-  let sourceLow = Infinity;
-  let sourceHigh = 0;
-  const lines = String(text).split(/\r?\n/);
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex].trim();
-    if (!line) continue;
-    if (eof) throw new Error(`第 ${lineIndex + 1} 行位于 EOF 记录之后`);
-    if (!line.startsWith(":") || line.length < 11 || (line.length - 1) % 2) throw new Error(`第 ${lineIndex + 1} 行不是有效 Intel HEX`);
-    if (!/^[0-9a-f]+$/i.test(line.slice(1))) throw new Error(`第 ${lineIndex + 1} 行含有非十六进制字符`);
-    const record = Uint8Array.from(line.slice(1).match(/../g).map((pair) => Number.parseInt(pair, 16)));
-    if (record.length !== record[0] + 5) throw new Error(`第 ${lineIndex + 1} 行长度无效`);
-    if ([...record].reduce((sum, value) => sum + value, 0) & 0xff) throw new Error(`第 ${lineIndex + 1} 行校验和错误`);
-    const offset = (record[1] << 8) | record[2];
-    const type = record[3];
-    const payload = record.slice(4, -1);
-    if (type === 0) {
-      for (let index = 0; index < payload.length; index += 1) {
-        const source = upper + offset + index;
-        const currentMode = source >= APP_BASE && source < APP_END ? "alias" : source >= 0x08003100 && source < 0x0800d000 ? "physical" : null;
-        if (!currentMode) throw new Error(`地址 0x${source.toString(16).toUpperCase()} 超出 APP 分区`);
-        if (mode && mode !== currentMode) throw new Error("HEX 混用了别名地址与物理地址");
-        mode = currentMode;
-        const normalized = currentMode === "physical" ? source - 0x08000000 : source;
-        if (memory.has(normalized) && memory.get(normalized) !== payload[index]) throw new Error("HEX 存在冲突的重复数据");
-        memory.set(normalized, payload[index]);
-        sourceLow = Math.min(sourceLow, source);
-        sourceHigh = Math.max(sourceHigh, source + 1);
-      }
-    } else if (type === 1) {
-      if (record[0] !== 0) throw new Error("EOF 记录长度无效");
-      eof = true;
-    } else if (type === 2) {
-      upper = ((payload[0] << 8) | payload[1]) << 4;
-    } else if (type === 4) {
-      upper = (((payload[0] << 8) | payload[1]) << 16) >>> 0;
-    } else if (![3, 5].includes(type)) {
-      throw new Error(`不支持的 HEX 记录类型 0x${type.toString(16)}`);
-    }
-  }
-  if (!eof) throw new Error("Intel HEX 缺少 EOF 记录");
-  if (!memory.has(APP_BASE)) throw new Error("APP 必须从 0x00003100（或 0x08003100）开始");
-  const end = Math.max(...memory.keys()) + 1;
-  const data = new Uint8Array(end - APP_BASE);
-  data.fill(0xff);
-  memory.forEach((value, address) => { data[address - APP_BASE] = value; });
-  return { data, crc32: crc32(data), firmwareVersion: firmwareVersionFromName(name), sourceLow, sourceHigh, mode };
-}
-
 async function readFirmware(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
-    const image = parseIntelHex(await file.text(), file.name);
+    const image = await decryptFirmware(await file.text());
     state.firmware = {
       ...image, valid: true, progress: 0,
       summary: `${file.name} · ${image.data.length.toLocaleString()} 字节 · CRC32 ${image.crc32.toString(16).toUpperCase().padStart(8, "0")}`,
       log: [`更新文件校验通过`, `APP 地址 0x${image.sourceLow.toString(16).toUpperCase()} - 0x${(image.sourceHigh - 1).toString(16).toUpperCase()}`],
     };
+    state.pendingBoot = null;
   } catch (error) {
     state.firmware = { valid: false, progress: 0, summary: `固件无效：${error.message}`, log: [error.message] };
     showToast(error.message, "error");
@@ -576,7 +756,8 @@ async function readFirmware(event) {
 async function startFirmwareUpdate() {
   if (!state.firmware?.valid || state.upgrading) return;
   state.upgrading = true;
-  state.firmware.log.push("准备连接 GXM Bootloader");
+  state.pendingBoot = null;
+  state.firmware.log.push("准备连接 SJZ Bootloader");
   render();
   try {
     await inspectUpgradeDevices();
@@ -588,15 +769,16 @@ async function startFirmwareUpdate() {
       state.firmware.log.push("设备已进入更新模式");
       await new Promise((resolve) => window.setTimeout(resolve, 900));
     }
-    const bootloader = await requestBootloader({ afterSwitch: switchedFromApp });
-    await uploadFirmware(bootloader, state.firmware, (percent, message) => {
-      state.firmware.progress = Math.max(0, Math.min(100, percent));
-      if (state.firmware.log.at(-1) !== message) state.firmware.log.push(message);
-      render();
-    });
-    state.firmware.log.push("固件升级完成");
-    showToast("固件升级完成", "success");
-    await bootloader.close();
+    let bootloader;
+    try {
+      bootloader = await requestBootloader({ afterSwitch: switchedFromApp });
+    } catch (error) {
+      if (!error.needsPermission) throw error;
+      state.pendingBoot = { afterSwitch: switchedFromApp };
+      state.firmware.log.push("BOOT 已进入授权步骤；点击“连接 BOOT 并继续”");
+      return;
+    }
+    await performFirmwareUpload(bootloader);
   } catch (error) {
     state.firmware.log.push(`升级失败：${error.message}`);
     showToast(`固件升级失败：${error.message}`, "error");
@@ -604,6 +786,46 @@ async function startFirmwareUpdate() {
     state.upgrading = false;
     render();
   }
+}
+
+async function continueFirmwareUpdate() {
+  if (!state.pendingBoot || !state.firmware?.valid || state.upgrading) return;
+  const { afterSwitch } = state.pendingBoot;
+  // requestBootloader invokes the WebHID chooser before its first await.
+  const bootPromise = requestBootloader({ afterSwitch, request: true });
+  state.upgrading = true;
+  state.pendingBoot = null;
+  render();
+  try {
+    await performFirmwareUpload(await bootPromise);
+  } catch (error) {
+    state.firmware.log.push(`升级失败：${error.message}`);
+    showToast(`固件升级失败：${error.message}`, "error");
+  } finally {
+    state.upgrading = false;
+    render();
+  }
+}
+
+async function performFirmwareUpload(bootloader) {
+  try {
+    await uploadFirmware(bootloader, state.firmware, (percent, message) => {
+      state.firmware.progress = Math.max(0, Math.min(100, percent));
+      if (state.firmware.log.at(-1) !== message) state.firmware.log.push(message);
+      render();
+    });
+  } finally {
+    if (bootloader.opened) await bootloader.close();
+  }
+  state.firmware.log.push("设备端写入与 CRC32 校验成功；等待 APP 重新连接");
+  await waitForAppReenumeration();
+  const status = await hid.connect({ request: false });
+  applyConnectionStatus(status);
+  await readKeyboardConfig(false);
+  await readLedConfig(false);
+  startStatusPolling();
+  state.firmware.log.push("APP 已稳定重连，固件升级完成");
+  showToast("固件升级完成", "success");
 }
 
 async function loadCatalog(reload = false) {

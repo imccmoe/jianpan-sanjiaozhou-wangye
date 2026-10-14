@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "next_music_id": 26,
   "description": "由项目编译器验证后即可在音乐库中试听或加载到 K1/K2/K3。",
   "songs": [
     {
@@ -16,7 +17,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：42 个音符，32.0 秒，曲包 200/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 1
     },
     {
       "id": "欢乐颂",
@@ -32,7 +34,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：28 个音符，19.2 秒，曲包 144/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 2
     },
     {
       "id": "reference-参考1-See-You-Again",
@@ -48,7 +51,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：67 个音符，19.2 秒，曲包 300/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 3
     },
     {
       "id": "reference-参考1-春日影-CRYCHIC-ver-干净无杂音-适合三角洲",
@@ -64,7 +68,8 @@
       "difficulty": "进阶",
       "verified": true,
       "verification": "通过：197 个音符，114.9 秒，曲包 820/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 4
     },
     {
       "id": "reference-参考2-反乌托邦-x-拼凑-bpm120",
@@ -80,7 +85,8 @@
       "difficulty": "进阶",
       "verified": true,
       "verification": "通过：513 个音符，116.0 秒，曲包 2084/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 5
     },
     {
       "id": "reference-参考2-圣诞快乐劳伦斯先生-bpm86",
@@ -96,7 +102,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：467 个音符，184.6 秒，曲包 1900/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 6
     },
     {
       "id": "reference-参考2-星降-海-bpm101",
@@ -112,7 +119,8 @@
       "difficulty": "进阶",
       "verified": true,
       "verification": "通过：177 个音符，109.6 秒，曲包 740/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 7
     },
     {
       "id": "reference-参考2-死别-bpm100",
@@ -128,7 +136,8 @@
       "difficulty": "进阶",
       "verified": true,
       "verification": "通过：454 个音符，168.0 秒，曲包 1848/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 8
     },
     {
       "id": "reference-参考2-父亲-bpm72",
@@ -144,7 +153,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：124 个音符，57.1 秒，曲包 528/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 9
     },
     {
       "id": "reference-参考2-远航星的告别-bpm84",
@@ -160,7 +170,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：275 个音符，172.1 秒，曲包 1132/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 10
     },
     {
       "id": "screenshot-粉刷匠",
@@ -176,7 +187,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：51 个音符，18.3 秒，曲包 236/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 11
     },
     {
       "id": "screenshot-上学歌-片段",
@@ -192,7 +204,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：28 个音符，10.6 秒，曲包 144/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 12
     },
     {
       "id": "screenshot-樱花草-片段",
@@ -208,7 +221,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：39 个音符，31.0 秒，曲包 188/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 13
     },
     {
       "id": "screenshot-千与千寻-always-with-me-片段",
@@ -224,7 +238,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：72 个音符，30.5 秒，曲包 320/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 14
     },
     {
       "id": "screenshot-蜜雪冰城主题曲",
@@ -240,7 +255,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：89 个音符，25.2 秒，曲包 388/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 15
     },
     {
       "id": "screenshot-花海-片段",
@@ -256,7 +272,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：74 个音符，32.9 秒，曲包 328/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 16
     },
     {
       "id": "screenshot-天空之城-片段",
@@ -266,13 +283,14 @@
       "rhythm": true,
       "gap_ms": 0,
       "transpose_semitones": 0,
-      "author": "按画面灰块认按下和松开，待 Qt 试听",
+      "author": "Qt 试听通过",
       "source": "乐谱/录频音乐3/天空之城.mp4#画面按键",
       "license": "用户提供，仅供本地使用",
       "difficulty": "普通",
       "verified": true,
-      "verification": "通过：150 个音符，115.8 秒，曲包 1116/4096 字节",
-      "test_stage": 1
+      "verification": "通过：271 个音符，115.8 秒，曲包 1116/4096 字节",
+      "test_stage": 3,
+      "music_id": 17
     },
     {
       "id": "screenshot-蒲公英的约定-片段",
@@ -288,7 +306,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：83 个音符，32.5 秒，曲包 364/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 18
     },
     {
       "id": "screenshot-烟花易冷-片段",
@@ -298,13 +317,14 @@
       "rhythm": true,
       "gap_ms": 0,
       "transpose_semitones": 0,
-      "author": "按画面灰块认按下和松开，待 Qt 试听",
+      "author": "Qt 试听通过",
       "source": "乐谱/录频音乐3/烟花易冷.mp4#画面按键",
       "license": "用户提供，仅供本地使用",
       "difficulty": "普通",
       "verified": true,
-      "verification": "通过：90 个音符，78.3 秒，曲包 732/4096 字节",
-      "test_stage": 1
+      "verification": "通过：175 个音符，78.3 秒，曲包 732/4096 字节",
+      "test_stage": 3,
+      "music_id": 19
     },
     {
       "id": "screenshot-荒-片段",
@@ -320,7 +340,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：48 个音符，19.0 秒，曲包 224/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 20
     },
     {
       "id": "screenshot-歌唱祖国-片段",
@@ -336,7 +357,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：105 个音符，47.0 秒，曲包 452/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 21
     },
     {
       "id": "mp4-爱错-出心曲",
@@ -352,7 +374,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：47 个音符，30.3 秒，曲包 220/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 22
     },
     {
       "id": "mp4-迪迦中文版主题曲",
@@ -368,7 +391,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：57 个音符，29.1 秒，曲包 260/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 23
     },
     {
       "id": "screenshot-得吃小曲",
@@ -384,7 +408,8 @@
       "difficulty": "入门",
       "verified": true,
       "verification": "通过：71 个音符，28.3 秒，曲包 316/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 24
     },
     {
       "id": "reference-参考2-雨爱-bpm80",
@@ -400,7 +425,8 @@
       "difficulty": "普通",
       "verified": true,
       "verification": "通过：110 个音符，57.7 秒，曲包 472/4096 字节",
-      "test_stage": 2
+      "test_stage": 3,
+      "music_id": 25
     }
   ]
 }

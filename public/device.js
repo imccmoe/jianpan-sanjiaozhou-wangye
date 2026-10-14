@@ -1,6 +1,10 @@
+import { decodeKeyboardConfig, decodeLedConfig, encodeKeyboardConfig, encodeLedConfig } from "./device-config.js";
+import { crc32 } from "./music-engine.js";
+
 const VID = 0x1a86;
 const APP_PID = 0xfe01;
 const BOOT_PID = 0xfe02;
+const VENDOR_USAGE_PAGE = 0xff00;
 const REPORT_ID = 0;
 const PACKET_SIZE = 63;
 const MUSIC_DATA_SIZE = 48;
@@ -16,13 +20,20 @@ const MUSIC = {
   play: 0x20,
   stop: 0x21,
   enterIap: 0x30,
+  getLed: 0x40,
+  setLed: 0x41,
+  getKeyboard: 0x42,
+  setKeyboard: 0x43,
 };
 
 export const webHidSupported = "hid" in navigator;
 
-async function authorizedGxmDevices() {
+async function authorizedSjzDevices() {
   if (!webHidSupported) return [];
-  return (await navigator.hid.getDevices()).filter((device) => device.vendorId === VID && [APP_PID, BOOT_PID].includes(device.productId));
+  return (await navigator.hid.getDevices()).filter((device) =>
+    device.vendorId === VID && [APP_PID, BOOT_PID].includes(device.productId) &&
+    device.collections.some((collection) => collection.usagePage === VENDOR_USAGE_PAGE &&
+      collection.usage === (device.productId === APP_PID ? 1 : 2)));
 }
 
 function validateUpgradeTopology(devices, { afterSwitch = false, expectedBootloader = null } = {}) {
@@ -43,7 +54,7 @@ function validateUpgradeTopology(devices, { afterSwitch = false, expectedBootloa
 
 export async function inspectUpgradeDevices() {
   if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID");
-  return validateUpgradeTopology(await authorizedGxmDevices());
+  return validateUpgradeTopology(await authorizedSjzDevices());
 }
 
 function delay(ms) {
@@ -95,6 +106,13 @@ function parseMusicResponse(dataView) {
   if ((bytes[61] | (bytes[62] << 8)) !== crc16(bytes.slice(0, 61))) throw new Error("设备响应 CRC 无效");
   const u16 = (offset) => bytes[offset] | (bytes[offset + 1] << 8);
   const u32 = (offset) => (bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
+  const command = bytes[4];
+  const success = bytes[7] < 0x80;
+  const ledConfig = success && [MUSIC.getLed, MUSIC.setLed].includes(command)
+    ? decodeLedConfig(bytes.slice(37, 53), u32(53), bytes[57]) : null;
+  const keyboardConfig = success && [MUSIC.getKeyboard, MUSIC.setKeyboard].includes(command)
+    ? decodeKeyboardConfig(bytes.slice(37, bytes[57] === 3 ? 51 : 45), u32(53), bytes[57]) : null;
+  const flags = bytes[54];
   return {
     command: bytes[4], session: bytes[5], sequence: bytes[6], status: bytes[7],
     expectedSequence: bytes[8], validMask: bytes[9], protocolVersion: bytes[11],
@@ -102,6 +120,17 @@ function parseMusicResponse(dataView) {
     eventCount: u16(16), elapsedMs: u32(18), durationMs: u32(22),
     received: u16(26), total: u16(28), keyMask: bytes[31] & 7,
     detail: bytes[32], firmwareVersion: u32(33),
+    bootVersion: ledConfig || keyboardConfig ? 0 : u32(37),
+    musicIds: ledConfig || keyboardConfig ? [0, 0, 0] : [u32(41), u32(45), u32(49)],
+    ledMode: ledConfig?.mode ?? bytes[53], ledRandom: ledConfig?.randomColors ?? Boolean(flags & 1),
+    ledBrightness: ledConfig?.brightness ?? bytes[55],
+    ledConfigFormat: ledConfig ? bytes[57] : bytes[56],
+    ledGeneration: ledConfig ? u32(53) : u32(57),
+    keyConfigSupported: keyboardConfig ? true : Boolean(flags & 8),
+    spinSupported: keyboardConfig ? bytes[57] >= 2 : Boolean(flags & 0x80),
+    keyIsMusic: keyboardConfig ? keyboardConfig.mappings.map((item) => item.role === "music")
+      : [0x10, 0x20, 0x40].map((bit) => Boolean(flags & bit)),
+    keyboardConfig, ledConfig,
   };
 }
 
@@ -110,7 +139,7 @@ function statusError(response) {
     0x80: "通信包格式错误", 0x81: "通信包 CRC 校验失败", 0x82: "传输会话不存在或已超时",
     0x83: "通信包顺序不正确", 0x84: "通信包长度或槽位超出范围", 0x85: "音乐数据无效",
     0x86: "音乐数据尚未接收完整", 0x87: "Flash 写入失败", 0x88: "传输超时",
-    0x89: "设备忙，请先停止播放", 0x8a: "设备不支持该命令",
+    0x89: "设备忙，请先停止播放", 0x8a: "设备不支持该命令", 0x8b: "BOOT 版本过旧",
   };
   return new Error(`${messages[response.status] || `设备错误 0x${response.status.toString(16)}`}（详情 0x${response.detail.toString(16)}）`);
 }
@@ -118,6 +147,7 @@ function statusError(response) {
 export class MusicHidDevice {
   constructor(onDisconnect) {
     this.device = null;
+    this.exchangeTail = Promise.resolve();
     this.onDisconnect = onDisconnect;
     if (webHidSupported) {
       navigator.hid.addEventListener("disconnect", (event) => {
@@ -131,36 +161,52 @@ export class MusicHidDevice {
 
   async authorizedDevices() {
     if (!webHidSupported) return [];
-    return (await navigator.hid.getDevices()).filter((device) => device.vendorId === VID && device.productId === APP_PID);
+    return (await authorizedSjzDevices()).filter((device) => device.productId === APP_PID);
   }
 
-  async connect({ request = false } = {}) {
+  async connect({ request = false, selectedDevice = null } = {}) {
     if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID，请使用桌面版 Chrome 或 Edge");
-    const devices = request
-      ? await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: APP_PID }] })
+    const devices = selectedDevice ? [selectedDevice] : request
+      ? await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: APP_PID,
+        usagePage: VENDOR_USAGE_PAGE, usage: 1 }] })
       : await this.authorizedDevices();
-    if (!devices.length) throw new Error("未发现已授权的 GXM 键盘");
+    if (!devices.length) throw new Error("未发现已授权的 SJZ 键盘");
     this.device = devices[0];
     if (!this.device.opened) await this.device.open();
     return this.ping();
   }
 
   async exchange(packet, timeout = 900) {
-    if (!this.device?.opened) throw new Error("请先连接 GXM 键盘");
+    const previous = this.exchangeTail;
+    let release;
+    this.exchangeTail = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await this.exchangeOnce(packet, timeout);
+    } finally {
+      release();
+    }
+  }
+
+  async exchangeOnce(packet, timeout = 900) {
+    if (!this.device?.opened) throw new Error("请先连接 SJZ 键盘");
     const expected = [packet[4], packet[5], packet[6]];
     await this.device.sendFeatureReport(REPORT_ID, packet);
     const deadline = performance.now() + timeout;
     let lastError = null;
     while (performance.now() < deadline) {
+      let response;
       try {
-        const response = parseMusicResponse(await this.device.receiveFeatureReport(REPORT_ID));
-        if (response.command === expected[0] && response.session === expected[1] && response.sequence === expected[2]) {
-          if (response.protocolVersion !== 1) throw new Error(`USB 协议版本不一致：${response.protocolVersion}`);
-          if (response.status >= 0x80) throw statusError(response);
-          return response;
-        }
+        response = parseMusicResponse(await this.device.receiveFeatureReport(REPORT_ID));
       } catch (error) {
         lastError = error;
+        await delay(12);
+        continue;
+      }
+      if (response.command === expected[0] && response.session === expected[1] && response.sequence === expected[2]) {
+        if (response.protocolVersion !== 1) throw new Error(`USB 协议版本不一致：${response.protocolVersion}`);
+        if (response.status >= 0x80) throw statusError(response);
+        return response;
       }
       await delay(12);
     }
@@ -172,13 +218,61 @@ export class MusicHidDevice {
   play(slot) { return this.exchange(buildMusicPacket(MUSIC.play, { slot })); }
   stop() { return this.exchange(buildMusicPacket(MUSIC.stop)); }
 
+  async getLedConfig() {
+    const response = await this.exchange(buildMusicPacket(MUSIC.getLed));
+    if (!response.ledConfig) throw new Error("设备没有返回有效的 LED 配置");
+    return response.ledConfig;
+  }
+
+  async setLedConfig(config) {
+    const payload = encodeLedConfig(config);
+    const response = await this.exchange(buildMusicPacket(MUSIC.setLed, { data: payload }), 5200);
+    const saved = response.ledConfig;
+    if (!saved || saved.mode !== payload[0] || Number(saved.randomColors) !== payload[1] ||
+      saved.colors.flat().some((value, index) => value !== payload[4 + index])) throw new Error("设备回读的 LED 设置与下发内容不一致");
+    return saved;
+  }
+
+  async getKeyboardConfig() {
+    const response = await this.exchange(buildMusicPacket(MUSIC.getKeyboard));
+    if (!response.keyboardConfig) throw new Error("设备没有返回有效的键位配置");
+    return response.keyboardConfig;
+  }
+
+  async setKeyboardConfig(mappings, loadedFormat = 1) {
+    const desired = encodeKeyboardConfig(mappings, loadedFormat);
+    if (desired.formatVersion === 1) {
+      const current = await this.getKeyboardConfig();
+      if (current.mappings.some((item) => item.role === "spin")) {
+        const cleared = Uint8Array.from(desired.payload);
+        cleared[0] = 2;
+        const transition = await this.exchange(buildMusicPacket(MUSIC.setKeyboard, { data: cleared }), 5200);
+        if (!transition.keyboardConfig || transition.keyboardConfig.formatVersion !== 2 ||
+            !encodeKeyboardConfig(transition.keyboardConfig.mappings, 2).payload.slice(1, 8)
+              .every((value, index) => value === cleared[index + 1])) {
+          throw new Error("设备没有确认已清除旋转键位");
+        }
+      }
+    }
+    const response = await this.exchange(buildMusicPacket(MUSIC.setKeyboard, { data: desired.payload }), 5200);
+    const saved = response.keyboardConfig;
+    if (!saved || saved.mode !== desired.mode || saved.formatVersion !== desired.formatVersion ||
+      !encodeKeyboardConfig(saved.mappings, saved.formatVersion).payload.every((value, index) => value === desired.payload[index])) {
+      throw new Error("设备回读的键位设置与下发内容不一致");
+    }
+    return saved;
+  }
+
   async upload(slot, packageBytes, onProgress) {
     if (packageBytes.length < 32 || packageBytes.length > 4096) throw new Error("音乐数据长度无效");
+    const packageVersion = packageBytes[4] | (packageBytes[5] << 8);
+    if (![1, 2].includes(packageVersion)) throw new Error("音乐数据版本无效");
     await this.stop();
+    await delay(30);
     const session = Math.floor(Math.random() * 255) + 1;
     let sequence = 0;
     let response = await this.exchange(buildMusicPacket(MUSIC.begin, {
-      session, sequence, slot, data: new TextEncoder().encode("MUSICPKG\x01"),
+      session, sequence, slot, data: Uint8Array.from([...new TextEncoder().encode("MUSICPKG"), packageVersion]),
     }));
     if (response.status !== 1) throw new Error("设备没有进入音乐接收模式");
     sequence = 1;
@@ -212,25 +306,27 @@ export class MusicHidDevice {
   }
 }
 
-export async function requestBootloader({ afterSwitch = false, expectedBootloader = null } = {}) {
+export async function requestBootloader({ afterSwitch = false, expectedBootloader = null, request = false } = {}) {
   if (!webHidSupported) throw new Error("当前浏览器不支持 WebHID");
-  let authorized = await authorizedGxmDevices();
+  // The chooser must be invoked directly by a user click, before any await.
+  const requested = request ? await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: BOOT_PID,
+    usagePage: VENDOR_USAGE_PAGE, usage: 2 }] }) : null;
+  if (request && !requested.length) throw new Error("Bootloader 授权已取消");
+  let authorized = await authorizedSjzDevices();
   let bootDevices = authorized.filter((device) => device.productId === BOOT_PID);
   if (!bootDevices.length) {
-    const requested = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: BOOT_PID }] });
-    if (!requested.length) throw new Error("未发现 GXM Bootloader");
-    if (afterSwitch) expectedBootloader ||= requested[0];
-    authorized = await authorizedGxmDevices();
-    bootDevices = authorized.filter((device) => device.productId === BOOT_PID);
+    const error = new Error("请点击“连接 BOOT 并继续”授权升级设备");
+    error.needsPermission = true;
+    throw error;
   }
   if (afterSwitch && bootDevices.length) {
     for (let attempt = 0; attempt < 5 && authorized.some((device) => device.productId === APP_PID); attempt += 1) {
       await delay(100);
-      authorized = await authorizedGxmDevices();
+      authorized = await authorizedSjzDevices();
     }
   }
   const topology = validateUpgradeTopology(authorized, { afterSwitch, expectedBootloader });
-  if (!topology.bootDevices.length) throw new Error("未发现 GXM Bootloader");
+  if (!topology.bootDevices.length) throw new Error("未发现 SJZ Bootloader");
   const device = topology.bootDevices[0];
   if (!device.opened) await device.open();
   return device;
@@ -288,19 +384,23 @@ async function iapExchange(device, packet, timeout = 900, retries = 3) {
       await device.sendFeatureReport(REPORT_ID, packet);
       const deadline = performance.now() + timeout;
       while (performance.now() < deadline) {
+        let response;
         try {
-          const response = parseIapResponse(await device.receiveFeatureReport(REPORT_ID));
-          if (response.command === packet[4] && response.session === packet[5] && response.sequence === packet[6]) {
-            if (response.status >= 0x80) throw new Error(`Bootloader 错误 0x${response.status.toString(16)}，位置 0x${response.errorOffset.toString(16)}`);
-            return response;
-          }
+          response = parseIapResponse(await device.receiveFeatureReport(REPORT_ID));
         } catch (error) {
           lastError = error;
+          await delay(8);
+          continue;
+        }
+        if (response.command === packet[4] && response.session === packet[5] && response.sequence === packet[6]) {
+          if (response.status >= 0x80 && packet[4] !== IAP.ping) throw new Error(`Bootloader 错误 0x${response.status.toString(16)}，位置 0x${response.errorOffset.toString(16)}`);
+          return response;
         }
         await delay(8);
       }
       throw new Error("Bootloader 未确认通信包");
     } catch (error) {
+      if (error.message?.startsWith("Bootloader 错误")) throw error;
       lastError = error;
       await delay(30);
     }
@@ -309,6 +409,14 @@ async function iapExchange(device, packet, timeout = 900, retries = 3) {
 }
 
 export async function uploadFirmware(device, image, onProgress) {
+  if (!(image.data instanceof Uint8Array) || image.data.length < 1 || image.data.length > 0x6f00 ||
+      image.sourceLow !== 0x4100 || image.sourceHigh !== 0x4100 + image.data.length ||
+      !Number.isInteger(image.firmwareVersion) || image.firmwareVersion <= 0 ||
+      image.crc32 !== crc32(image.data)) {
+    throw new Error("APP 镜像地址、大小、版本或 CRC32 无效");
+  }
+  const deadline = performance.now() + 90000;
+  const checkDeadline = () => { if (performance.now() >= deadline) throw new Error("固件升级总时间超过 90 秒"); };
   let sequence = 0;
   const nextSequence = () => {
     const value = sequence;
@@ -320,19 +428,22 @@ export async function uploadFirmware(device, image, onProgress) {
     sequence: nextSequence(),
   }), timeout);
   const ping = await command(IAP.ping);
-  if (ping.bootVersion < 0x0001000a) throw new Error("Bootloader 版本过旧，禁止网页升级以保护音乐区");
+  if (ping.bootVersion < 0x0001000d) throw new Error("当前 APP 需要 BOOT V1.13 或更高版本；已在擦除前停止升级");
 
   const session = Math.floor(Math.random() * 255) + 1;
   const metadata = new Uint8Array(16);
   writeU32(metadata, 0, image.data.length);
   writeU32(metadata, 4, image.crc32);
-  writeU32(metadata, 8, 0x00003100);
+  writeU32(metadata, 8, 0x00004100);
   writeU32(metadata, 12, image.firmwareVersion || 0);
   let response = await command(IAP.begin, { session, data: metadata });
+  if (!((response.phase === 1 && response.status === 1) || (response.phase === 2 && response.status === 2))) {
+    throw new Error(`Bootloader 未进入擦除或续传阶段：phase=${response.phase} status=0x${response.status.toString(16)}`);
+  }
   onProgress?.(2, "正在准备 APP 分区");
   const started = performance.now();
   while (response.phase !== 2) {
-    if (performance.now() - started > 90000) throw new Error("固件升级超时");
+    checkDeadline();
     await delay(45);
     response = await command(IAP.status, { session });
     if (response.phase === 5) throw new Error("Bootloader 擦除 APP 分区失败");
@@ -341,10 +452,23 @@ export async function uploadFirmware(device, image, onProgress) {
   }
 
   let offset = response.progressOffset;
+  if (offset < 0 || offset > image.data.length) throw new Error("Bootloader 返回的断点超出镜像范围");
+  let stalled = 0;
   while (offset < image.data.length) {
+    checkDeadline();
     const chunk = image.data.slice(offset, offset + 44);
-    response = await command(IAP.data, { session, offset, total: image.data.length, data: chunk }, 700);
-    if (response.progressOffset <= offset) throw new Error(`固件下载在 ${offset} 字节处没有进展`);
+    try {
+      response = await command(IAP.data, { session, offset, total: image.data.length, data: chunk }, 700);
+    } catch (error) {
+      if (error.message?.startsWith("Bootloader 错误")) throw error;
+      response = await command(IAP.status, { session });
+    }
+    if (response.progressOffset < offset || response.progressOffset > image.data.length) throw new Error("Bootloader 返回的下载偏移无效");
+    if (response.progressOffset === offset) {
+      if (++stalled > 8) throw new Error(`固件下载在 ${offset} 字节处没有进展`);
+      continue;
+    }
+    stalled = 0;
     offset = response.progressOffset;
     const percent = Math.floor(offset * 100 / image.data.length);
     onProgress?.(15 + Math.floor(offset * 75 / image.data.length), `正在下载固件：${percent}%`);
@@ -354,6 +478,7 @@ export async function uploadFirmware(device, image, onProgress) {
   if (response.status !== 4) throw new Error("Bootloader 未进入校验阶段");
   onProgress?.(90, "正在校验设备内固件");
   while (response.phase !== 4) {
+    checkDeadline();
     await delay(40);
     response = await command(IAP.status, { session });
     if (response.phase === 5) throw new Error("设备端固件校验失败");
@@ -362,4 +487,21 @@ export async function uploadFirmware(device, image, onProgress) {
   if (response.imageCrc32 !== image.crc32) throw new Error("设备端 CRC32 与更新文件不一致");
   onProgress?.(100, "固件升级完成，等待 APP 重新连接");
   return response;
+}
+
+export async function waitForAppReenumeration(timeoutMs = 12000) {
+  const deadline = performance.now() + timeoutMs;
+  let stableSince = 0;
+  while (performance.now() < deadline) {
+    const devices = await authorizedSjzDevices();
+    const { appDevices, bootDevices } = validateUpgradeTopology(devices);
+    if (appDevices.length === 1 && bootDevices.length === 0) {
+      if (!stableSince) stableSince = performance.now();
+      if (performance.now() - stableSince >= 1000) return appDevices[0];
+    } else {
+      stableSince = 0;
+    }
+    await delay(100);
+  }
+  throw new Error("固件写入和 CRC32 校验成功，但 12 秒内未确认 APP 稳定重连；请检查键盘连接状态");
 }

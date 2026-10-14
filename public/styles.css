@@ -288,6 +288,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   font-weight: 700;
 }
 .keycap.active { border-color: var(--mint); border-bottom-color: #62bab0; background: var(--mint); color: #111225; }
+.keycap.physical-down { box-shadow: 0 0 0 3px #2aba74 inset; }
 .keycap span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 12px; margin-top: 10px; }
 .mapping-editor, .mapping-summary, .firmware-card, .about-section {
@@ -299,6 +300,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .section-heading span { font-size: 12px; }
 .form-row { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; align-items: center; }
 .form-row > label { font-size: 13px; }
+.role-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.role-row button { min-height: 38px; border: 1px solid #dcdce9; border-radius: 8px; background: #f6f6fa; color: #46475b; font-weight: 700; }
+.role-row button.active { background: var(--violet); border-color: var(--violet); color: #fff; }
+.spin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.spin-grid.inactive { opacity: .52; }
+.spin-grid label { display: grid; gap: 5px; color: #606274; font-size: 12px; }
+.spin-grid input { width: 100%; min-width: 0; height: 38px; padding: 0 9px; border: 1px solid #d8d5ef; border-radius: 8px; }
+.spin-note { margin: -5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .segmented button { background: #f0f1f5; }
 .modifier-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
@@ -327,6 +336,21 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .write-state { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 16px 0 10px; }
 .write-state span { color: var(--muted); font-size: 12px; }
 .write-state b { border-radius: 8px; padding: 6px 9px; background: #fff3c8; color: var(--amber); font-size: 11px; }
+.mapping-summary > .button { margin-top: 7px; }
+
+.led-card { margin-bottom: 10px; padding: 17px 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.led-card h2 { margin: 0 0 12px; font-size: 18px; }
+.led-card > select { min-width: 180px; height: 38px; margin-right: 16px; padding: 0 9px; border: 1px solid #d8d5ef; border-radius: 8px; }
+.led-card p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.led-color { display: inline-flex; align-items: center; gap: 10px; margin: 0 20px 9px 0; font-size: 13px; }
+.led-color input { width: 45px; height: 35px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.led-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--muted); font-size: 13px; }
+.led-actions span { margin-right: auto; }
+
+.device-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; }
+.device-facts div { min-height: 62px; padding: 10px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; display: grid; gap: 5px; }
+.device-facts span { color: var(--muted); font-size: 12px; }
+.device-facts strong { font-size: 14px; }
 
 .key-status {
   margin: 5px 0 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff;
@@ -338,6 +362,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   display: grid; place-content: center; text-align: center; color: #525460; font-size: 13px;
 }
 .key-status div.pressed { border-color: #19804d; background: #28a864; color: #fff; }
+.key-status div small { font-size: 11px; opacity: .8; }
 .firmware-card { min-height: 375px; padding: 18px; }
 .firmware-card > p { font-size: 13px; }
 .firmware-file { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 13px; }
@@ -381,6 +406,7 @@ footer {
   .song-detail { min-height: 240px; }
   .slot-row { grid-template-columns: 1fr; }
   .mapping-layout { grid-template-columns: 1fr; }
+  .device-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 660px) {
   .topbar { min-height: 0; padding: 14px; flex-direction: column; gap: 14px; }
@@ -389,7 +415,7 @@ footer {
   .device-controls select { grid-column: 1 / -1; width: 100%; }
   .device-state { height: 40px; }
   .main-tabs { height: 50px; overflow: hidden; }
-  .main-tab { min-width: 0; width: 25%; flex: 1; padding: 0 3px; font-size: 13px; }
+  .main-tab { min-width: 0; width: 20%; flex: 1; padding: 0 3px; font-size: 12px; }
   .page { padding: 14px 12px 18px; }
   .page-heading { align-items: flex-start; flex-direction: column; min-height: 0; margin-bottom: 16px; }
   .view-switch { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
@@ -426,6 +452,9 @@ footer {
   .keyboard-deck > div { min-height: 55px; }
   .keycap { min-height: 72px; }
   .form-row { grid-template-columns: 1fr; }
+  .role-row { grid-template-columns: 1fr; }
+  .spin-grid { grid-template-columns: 1fr; }
+  .led-actions { flex-wrap: wrap; }
   .modifier-row { grid-template-columns: 1fr 1fr; }
   .key-entry { grid-template-columns: 1fr; }
   .key-status { grid-template-columns: 1fr; }
