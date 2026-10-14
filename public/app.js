@@ -89,6 +89,7 @@ let toastTimer = 0;
 let statusTimer = 0;
 let statusBusy = false;
 let configBusy = false;
+let firmwareSelectionNonce = 0;
 
 function readStorage(key, fallback, legacyKey = null) {
   try {
@@ -340,7 +341,7 @@ function renderDevice() {
       return `<div class="${pressed ? "pressed" : ""}"><strong>K${slot + 1} · ${state.device.connected ? (pressed ? "按下" : "松开") : "未连接"}</strong><span>${mapping ? escapeHtml(mappingText(mapping)) : "配置未读取"}</span><small>${escapeHtml(deviceSongText(slot))}</small></div>`;
     }).join("")}</fieldset>
     <section class="firmware-card">
-      <h2>固件更新</h2><p>选择最新版 APP 加密升级包（.enc.hex）。浏览器会在本机解密并核验版本、大小与认证标签，再通过 USB 写入。更新保留 K1～K3 已存音乐；中断后可重新选同一文件继续。</p>
+      <h2>固件更新</h2><p>默认加载随网页发布的 APP 加密升级包（.enc.hex），也可手动选择新包。浏览器会在本机解密并核验版本、大小与认证标签，再通过 USB 写入。更新保留 K1～K3 已存音乐；中断后可重新选同一文件继续。</p>
       <div class="firmware-file"><span>${firmware ? escapeHtml(firmware.summary) : "尚未选择加密升级包"}</span><label class="button">选择更新文件<input id="firmware-input" type="file" accept=".enc.hex,.hex,text/plain"></label></div>
       <div class="progress"><span style="width:${firmware?.progress || 0}%"></span></div>
       <button class="button primary update-button" data-action="${state.pendingBoot ? "continue-update" : "start-update"}" ${firmware?.valid && !state.upgrading ? "" : "disabled"}>${state.upgrading ? "正在更新" : state.pendingBoot ? "连接 BOOT 并继续" : "开始更新"}</button>
@@ -748,17 +749,43 @@ async function saveSlot(slot) {
 async function readFirmware(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const nonce = ++firmwareSelectionNonce;
   try {
-    const image = await decryptFirmware(await file.text());
-    state.firmware = {
-      ...image, valid: true, progress: 0,
-      summary: `${file.name} · ${image.data.length.toLocaleString()} 字节 · CRC32 ${image.crc32.toString(16).toUpperCase().padStart(8, "0")}`,
-      log: [`更新文件校验通过`, `APP 地址 0x${image.sourceLow.toString(16).toUpperCase()} - 0x${(image.sourceHigh - 1).toString(16).toUpperCase()}`],
-    };
-    state.pendingBoot = null;
+    const contents = await file.text();
+    if (nonce !== firmwareSelectionNonce) return;
+    await prepareFirmware(contents, file.name, nonce);
   } catch (error) {
+    if (nonce !== firmwareSelectionNonce) return;
     state.firmware = { valid: false, progress: 0, summary: `固件无效：${error.message}`, log: [error.message] };
     showToast(error.message, "error");
+  }
+  render();
+}
+
+async function prepareFirmware(contents, name, nonce) {
+  const image = await decryptFirmware(contents);
+  if (nonce !== firmwareSelectionNonce) return;
+  state.firmware = {
+    ...image, valid: true, progress: 0,
+    summary: `${name} · ${image.data.length.toLocaleString()} 字节 · CRC32 ${image.crc32.toString(16).toUpperCase().padStart(8, "0")}`,
+    log: ["加密更新文件校验通过",
+      `APP 地址 0x${image.sourceLow.toString(16).toUpperCase()} - 0x${(image.sourceHigh - 1).toString(16).toUpperCase()}`],
+  };
+  state.pendingBoot = null;
+}
+
+async function loadDefaultFirmware() {
+  const nonce = firmwareSelectionNonce;
+  try {
+    const response = await fetch("./firmware/CH32V203C8T.enc.hex", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contents = await response.text();
+    if (nonce !== firmwareSelectionNonce) return;
+    await prepareFirmware(contents, "CH32V203C8T.enc.hex（默认）", nonce);
+  } catch (error) {
+    if (nonce !== firmwareSelectionNonce) return;
+    state.firmware = { valid: false, progress: 0,
+      summary: `默认加密固件不可用：${error.message}`, log: [error.message] };
   }
   render();
 }
@@ -865,3 +892,4 @@ async function loadCatalog(reload = false) {
 render();
 loadCatalog();
 scanDevices();
+loadDefaultFirmware();

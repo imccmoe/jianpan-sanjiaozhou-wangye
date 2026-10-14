@@ -62,6 +62,15 @@ test("encrypted firmware rejects plain HEX", async () => {
   await assert.rejects(decryptFirmware(":020000040000FA"), /加密 HEX/);
 });
 
+test("default encrypted APP is valid and targets the current partition", async () => {
+  const contents = readFileSync(new URL("../public/firmware/CH32V203C8T.enc.hex", import.meta.url), "utf8");
+  const image = await decryptFirmware(contents);
+  assert.equal(image.sourceLow, 0x4100);
+  assert.equal(image.firmwareVersion, 0x1000b);
+  assert.equal(image.data.length, 27392);
+  assert.equal(image.crc32, 0x0304b728);
+});
+
 test("encrypted APP authenticates, decrypts, and detects tampering", async () => {
   const image = new Uint8Array(128).fill(0xff);
   image.set([0x41, 0x50, 0x56, 0x31], 32);
