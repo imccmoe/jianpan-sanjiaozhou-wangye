@@ -221,6 +221,7 @@ function render() {
       <nav class="main-tabs" aria-label="主功能">
         ${[["library", "音乐星球"], ["mapping", "键位设置"], ["led", "灯光设置"], ["device", "设备维护"], ["about", "关于"]]
           .map(([id, label]) => `<button class="main-tab ${state.view === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("")}
+        <a class="main-tab" href="/hub/">配装方案站 ↗</a>
       </nav>
       <main class="page">${renderPage()}</main>
       <footer>${escapeHtml(footerText())}</footer>
@@ -364,6 +365,7 @@ function renderAbout() {
     <section class="process-flow">${["本地曲库", "CH32 芯片", "标准 USB HID", "游戏输入响应"].map((text, index) => `${index ? "<i>→</i>" : ""}<span>${text}</span>`).join("")}</section>
     <section class="about-section"><h2>工作方式</h2><p>网页将最新曲库中的乐谱编译成带时间信息的设备曲包，通过 USB 写入键盘 Flash。K1～K3 可以分别配置成音乐播放 / 暂停、标准键值输出或按住持续旋转。键盘通过标准 USB HID 报告向电脑发送键盘与鼠标输入；关闭网页后，已保存的音乐和配置仍能使用。</p></section>
     <section class="about-section"><h2>关于旋转陀螺</h2><p>旋转扭矩根据鼠标灵敏度与水平灵敏度计算，每圈速度可以单独调节。固件内置轻微垂直补偿。不同游戏设置和枪械可能产生不同效果，建议在训练场校准。</p></section>
+    <section class="about-section"><h2>配套工具</h2><p>同一站点还提供游戏配装方案库（三角洲行动 / 无畏契约），可搜索社区配装、复制分享码，也可以投稿自己的方案。<a href="/hub/">打开配装方案站</a>。</p></section>
     <section class="about-section caution"><h2>游戏规则</h2><p>游戏对自动输入与外设宏的规则可能变化；使用前请查看游戏官方现行规则。SJZ 不承诺规避反作弊检测或封禁。</p></section>`;
 }
 

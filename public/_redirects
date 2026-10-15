@@ -1,0 +1,3 @@
+# Cloudflare Pages 重定向。静态站点本身已经能把 /keyboard.html 308 到 /keyboard，
+# 这里显式声明一次是为了让行为与规则都可见、可审。
+/keyboard.html  /keyboard  308
