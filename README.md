@@ -22,15 +22,27 @@ npm install
 npx wrangler d1 create wy-zfq-config-hub   # 把输出的 database_id 填进 wrangler.toml
 npm run db:migrate:local                   # 建表
 npm run db:seed                            # 生成种子 SQL 并导入本地 D1
-npm run dev:local                          # 启动 Pages + D1，并自动准备 ADMIN_TOKEN
+npm run dev                                # 启动 Pages + D1，并自动准备 ADMIN_TOKEN
 ```
 
-`npm run dev:local` 会做三件事：
+`npm run dev`（等价于 `npm run dev:local`）会做三件事：
 
-1. 把 wrangler/miniflare 的状态与临时目录放进仓库内（`.wrangler-local/`），
-   不依赖 `%USERPROFILE%\.wrangler` 的写权限；
+1. **把 workerd 的临时目录指向仓库内**（`.wrangler-local/tmp`）。这一步是必需的：
+   workerd 默认在 `os.tmpdir()` 下创建 `miniflare-email-store`，
+   而 `%LOCALAPPDATA%\Temp` 在受限环境里不可写，会直接启动失败并报
+   `kj/filesystem-disk-win32.c++: CreateDirectory: #5 拒绝访问`；
 2. 首次运行时生成 `.dev.vars`（已 gitignore）并写入随机 `ADMIN_TOKEN`，同时打印出来；
 3. 启动 `wrangler pages dev`，地址 `http://127.0.0.1:8788`，审核台在 `/hub/#/admin`。
+
+本地 D1 默认持久化在 `.wrangler-local/persist`（脚本显式传 `--persist-to`，
+数据库位置不随 wrangler 版本变化）。想改用 wrangler 默认的 `~/.wrangler` 状态目录：
+
+```powershell
+$env:SJZ_WRANGLER_STATE = "default"; npm run dev
+```
+
+> 裸跑 `npm run dev:plain`（`wrangler pages dev public`）在本机可能因为上述临时目录
+> 权限问题启动失败。若确实需要原始命令，请自行设置可写的 `TMP`/`TEMP`。
 
 ### 其它方式
 
@@ -41,8 +53,6 @@ python -m http.server 8788 --directory public
 # 注意：Python 的 http.server 不会把 /keyboard 映射到 keyboard.html，
 # 请直接访问 http://localhost:8788/keyboard.html
 ```
-
-已有自己的 wrangler 环境时也可以用 `npm run dev`（等价于 `wrangler pages dev public`）。
 
 ## 测试
 
