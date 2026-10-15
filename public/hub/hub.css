@@ -16,7 +16,10 @@
   --canvas: #0d0e17;
   --panel: #151726;
   --panel-2: #1b1e30;
-  --violet: #7d6cf0;
+  /* 主色需要足够暗，才能让白色按钮文字达到 4.5:1 对比度（#7d6cf0 只有 3.98） */
+  --violet: #6a5ae0;
+  /* #6a5ae0 作为文字在暗色画布上只有 3.76，文字场景改用更亮的紫 */
+  --violet-text: #8b7cf0;
   --amber: #ffb454;
   --mint: #6fe0cf;
   --rose: #ff7a8a;
@@ -43,6 +46,7 @@
   --panel: #ffffff;
   --panel-2: #eef0f6;
   --violet: #5b4bd0;
+  --violet-text: #5b4bd0;
   --amber: #8a6410;
   --mint: #0f7d6d;
   --rose: #c8434f;
@@ -191,4 +195,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 .entry:hover { border-color: var(--violet); }
 .entry strong { font-size: 17px; }
 .entry span { color: var(--muted); font-size: 13px; line-height: 1.6; }
-.entry em { font-style: normal; color: var(--violet); font-size: 13px; }
+.entry em { font-style: normal; color: var(--violet-text); font-size: 13px; }
