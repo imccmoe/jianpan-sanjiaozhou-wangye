@@ -46,6 +46,7 @@ const state = {
   detail: null,
   detailLoading: false,
   adminToken: tokenStore.get(),
+  adminError: "",
   admin: { items: [], stats: {}, status: "pending", total: 0, offset: 0, loading: false },
   submitBusy: false
 };
@@ -165,10 +166,13 @@ async function loadAdmin(reset = false) {
     state.admin.total = payload.total;
     state.admin.offset = state.admin.items.length;
   } catch (error) {
-    showToast(`审核队列读取失败：${errorText(error)}`, "error");
     if (error.status === 401) {
+      // 令牌错误时回到登录页，并把原因写在表单里（toast 会随重渲染消失）。
       state.adminToken = "";
+      state.adminError = "令牌无效，请重新输入。本地令牌见 .dev.vars 的 ADMIN_TOKEN。";
       tokenStore.set("");
+    } else {
+      showToast(`审核队列读取失败：${errorText(error)}`, "error");
     }
   } finally {
     state.admin.loading = false;
@@ -455,10 +459,24 @@ function adminView() {
     return `${header()}
     <div class="layout" style="grid-template-columns:1fr">
       <main>
-        <div class="heading"><h1>审核台</h1><p>需要服务端配置的 ADMIN_TOKEN。</p></div>
+        <div class="heading"><h1>审核台</h1><p>审核社区投稿：通过、拒绝、下架或恢复方案。需要服务端配置的 ADMIN_TOKEN。</p></div>
+        <div class="filter-card" style="max-width:560px;margin-bottom:16px">
+          <h3>令牌从哪来</h3>
+          <p class="hint" style="margin:0 0 8px">
+            本地开发：令牌由 <code>npm run dev</code> 首次运行时写入仓库根目录的 <code>.dev.vars</code>，
+            启动日志里也会打印。查看当前值：
+          </p>
+          <div class="code-box"><code>Select-String -Path .dev.vars -Pattern ADMIN_TOKEN</code>
+            <span class="hint">PowerShell</span></div>
+          <p class="hint" style="margin:10px 0 0">
+            生产环境：用 <code>npx wrangler pages secret put ADMIN_TOKEN</code> 设置。<br>
+            令牌只保存在本标签页的 sessionStorage，刷新页面不需要重新输入，关闭标签页即失效。
+          </p>
+        </div>
         <form class="form" id="admin-login" style="max-width:420px">
-          <div class="field"><label for="admin-token">管理令牌</label><input id="admin-token" type="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="admin-token">管理令牌</label><input id="admin-token" type="password" autocomplete="current-password" required placeholder="粘贴 .dev.vars 里的令牌"></div>
           <button class="button primary" type="submit">进入审核台</button>
+          <p class="error-text" id="admin-error">${escapeHtml(state.adminError || "")}</p>
         </form>
       </main>
     </div>`;
@@ -773,6 +791,7 @@ function bindEvents() {
       const token = document.querySelector("#admin-token")?.value?.trim();
       if (!token) return;
       state.adminToken = token;
+      state.adminError = "";
       tokenStore.set(token);
       loadAdmin(true);
     });

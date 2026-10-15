@@ -317,6 +317,10 @@ async function main() {
   }
 
   console.log("\n[边界与安全]");
+  // 审核台登录页在未持令牌时也要能打开（入口说明写在前端里）。
+  const adminEntry = await request("/hub/");
+  check("审核台入口页面可访问", adminEntry.status === 200 && String(adminEntry.text).includes("ZFQ 配装方案站"));
+  check("静态资源提供 hub 前端", (await request("/hub/app.js")).text.includes("admin-login"));
   const badMethod = await request("/api/schemes", { method: "POST", body: {} });
   check("错误方法返回 405", badMethod.status === 405, `实际 ${badMethod.status}`);
   check("405 带 Allow 头", badMethod.headers.get("allow") === "GET", badMethod.headers.get("allow") || "无");

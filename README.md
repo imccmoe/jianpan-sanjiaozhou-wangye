@@ -54,6 +54,29 @@ python -m http.server 8788 --directory public
 # 请直接访问 http://localhost:8788/keyboard.html
 ```
 
+## 审核台
+
+审核台地址是 **`/hub/#/admin`**（首页有入口卡片，配装站顶部导航里也有「审核台」）：
+
+```powershell
+npm run dev                                          # 首次运行会生成 .dev.vars 并打印令牌
+Select-String -Path .dev.vars -Pattern ADMIN_TOKEN   # 查看当前令牌
+```
+
+把令牌粘进登录框即可。令牌只存在该标签页的 sessionStorage，刷新不用重输，关掉标签页即失效。
+生产环境用 `npx wrangler pages secret put ADMIN_TOKEN` 设置。
+
+审核台能做的事：
+
+- 按状态筛选：待审核 / 已发布 / 已拒绝 / 已下架，并显示各状态计数
+- 每行操作：**通过**、**拒绝**、**下架**、**恢复**、**预览**（打开详情抽屉）
+- 状态流转：`approve` pending/rejected/hidden → active；`reject` pending/active/hidden → rejected；
+  `hide` active/pending → hidden；`restore` hidden/rejected → active。非法流转返回 409
+- 每次变更写入 `audit_logs`（含操作者标识与备注）
+
+对应接口 `GET /api/admin/schemes` 与 `POST /api/admin/review` 已在
+[docs/openapi.json](docs/openapi.json) 里声明 bearer 令牌，可直接在 Apifox 里调试。
+
 ## 测试
 
 ```powershell
