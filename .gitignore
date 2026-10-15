@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+.wrangler-test/
+.wrangler-local/
+.npm-cache/
+.dev.vars
+.env
+.env.*
+
+# 可再生的构建产物：由 scripts/build-d1-seed.mjs 生成
+seeds/
+
+# 本地截图与预览页：由 scripts/build-hub-preview.mjs 生成
+.shots/
