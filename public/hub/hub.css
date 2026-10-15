@@ -108,6 +108,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 .button { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
 .button:hover:not(:disabled) { border-color: var(--violet); }
 .button.primary { background: var(--violet); border-color: var(--violet); color: var(--on-accent); }
+/* 悬停时必须重新声明底色与文字色：.button:hover 与 .button.primary 优先级相同（0,2,0），
+   而前者写在后面，会把紫色底换成其他颜色，白字随之消失。 */
+.button.primary:hover:not(:disabled) { background: var(--violet); border-color: var(--violet); color: var(--on-accent); filter: brightness(1.08); }
+.button.primary:active:not(:disabled) { filter: brightness(0.94); }
 .button.ghost { background: transparent; }
 .button.danger { border-color: var(--rose); color: var(--rose); }
 
