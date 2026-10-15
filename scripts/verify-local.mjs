@@ -9,6 +9,7 @@
 
 const BASE = (process.argv[2] || "http://127.0.0.1:8788").replace(/\/$/, "");
 const ADMIN_TOKEN = process.argv[3] || process.env.ADMIN_TOKEN || "";
+const WAIT_MS = Number(process.env.WAIT_MS || 30000);
 
 let passed = 0;
 const failures = [];
@@ -30,27 +31,73 @@ function note(message) {
   console.log(`  · ${message}`);
 }
 
-async function request(path, { method = "GET", body, headers = {} } = {}) {
-  const response = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      ...(body !== undefined ? { "content-type": "application/json" } : {}),
-      ...headers
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    payload = text;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * wrangler 在文件变动时会 reload，期间连接会被拒。
+ * 所以先轮询等待服务就绪，避免落在这个窗口里直接失败。
+ */
+async function waitForServer() {
+  const deadline = Date.now() + WAIT_MS;
+  let lastError = "";
+  process.stdout.write(`等待服务就绪（最多 ${Math.round(WAIT_MS / 1000)} 秒）`);
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${BASE}/api/meta`, { headers: { connection: "close" } });
+      if (response.ok) {
+        console.log(" —— 已就绪");
+        return true;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error.cause?.code || error.message;
+    }
+    process.stdout.write(".");
+    await sleep(800);
   }
-  return { status: response.status, payload, headers: response.headers, text };
+  console.log("");
+  console.error(`服务在 ${Math.round(WAIT_MS / 1000)} 秒内不可达：${BASE}（最后一次错误：${lastError}）`);
+  console.error("请先另开一个终端运行 npm run dev，再执行本脚本。");
+  return false;
+}
+
+/** 单次请求；短暂连接错误自动重试，避免 reload 窗口导致偶发失败。 */
+async function request(path, { method = "GET", body, headers = {}, retries = 3 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${BASE}${path}`, {
+        method,
+        headers: {
+          connection: "close",
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+          ...headers
+        },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      const text = await response.text();
+      let payload = null;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = text;
+      }
+      return { status: response.status, payload, headers: response.headers, text };
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await sleep(700 * (attempt + 1));
+    }
+  }
+  const code = lastError?.cause?.code || lastError?.message || "unknown";
+  throw new Error(`请求 ${path} 失败：${code}`);
 }
 
 async function main() {
   console.log(`验收目标：${BASE}${ADMIN_TOKEN ? "（带管理令牌）" : "（无管理令牌）"}`);
+  if (!(await waitForServer())) {
+    process.exitCode = 2;
+    return;
+  }
 
   console.log("\n[静态资源]");
   for (const [path, needle] of [
@@ -212,16 +259,29 @@ async function main() {
   check("错误方法返回 405", badMethod.status === 405, `实际 ${badMethod.status}`);
   check("405 带 Allow 头", badMethod.headers.get("allow") === "GET", badMethod.headers.get("allow") || "无");
 
-  const badJson = await fetch(`${BASE}/api/schemes/feedback`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: "{ broken"
-  });
+  // 这两个用例需要发送非法/超大原文，所以不走 request() 的 JSON 封装。
+  const raw = async (path, body) => {
+    let lastError;
+    for (let attempt = 0; attempt <= 3; attempt += 1) {
+      try {
+        return await fetch(`${BASE}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", connection: "close" },
+          body
+        });
+      } catch (error) {
+        lastError = error;
+        await sleep(700 * (attempt + 1));
+      }
+    }
+    throw new Error(`请求 ${path} 失败：${lastError?.cause?.code || lastError?.message}`);
+  };
+
+  const badJson = await raw("/api/schemes/feedback", "{ broken");
   check("非法 JSON 返回 400", badJson.status === 400, `实际 ${badJson.status}`);
 
-  const oversize = await fetch(`${BASE}/api/schemes/feedback`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ schemeId: "x", type: "good", note: "y".repeat(20000) })
-  });
+  const oversize = await raw("/api/schemes/feedback",
+    JSON.stringify({ schemeId: "x", type: "good", note: "y".repeat(20000) }));
   check("超大请求体被拒绝（413）", oversize.status === 413, `实际 ${oversize.status}`);
 
   const xss = await request(`/api/schemes?q=${encodeURIComponent("<img src=x onerror=alert(1)>")}`);
@@ -230,6 +290,12 @@ async function main() {
   const jsonHeaders = await request("/api/meta");
   check("API 响应带 nosniff", jsonHeaders.headers.get("x-content-type-options") === "nosniff");
   check("API 响应不可缓存", (jsonHeaders.headers.get("cache-control") || "").includes("no-store"));
+
+  // Chrome DevTools 会探测这个端点并期望 JSON；若被 SPA 回退成 HTML 会报解析错误。
+  const wellKnown = await request("/.well-known/appspecific/com.chrome.devtools.json");
+  check("DevTools 探测端点返回 JSON 而非 HTML",
+    wellKnown.status === 200 && typeof wellKnown.payload === "object" && wellKnown.payload !== null,
+    `HTTP ${wellKnown.status}，body 前 40 字：${String(wellKnown.text).slice(0, 40)}`);
 
   console.log(`\n通过 ${passed} 项，失败 ${failures.length} 项`);
   if (notes.length) console.log(`备注 ${notes.length} 条`);
@@ -240,4 +306,10 @@ async function main() {
   }
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  console.error(`\n验收中断：${error.message}`);
+  console.error("若服务器在运行中被 reload（改动文件会触发），重跑本脚本即可。");
+  process.exitCode = 2;
+}

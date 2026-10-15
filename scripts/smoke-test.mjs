@@ -120,6 +120,12 @@ function serveStatic(request, response) {
     : resolved;
   if (!fs.existsSync(file)) {
     // Pages 的 SPA 行为：找不到路径时回退到站点首页。
+    // 但 /.well-known/* 必须保持 404 —— Chrome DevTools 会探测
+    // /.well-known/appspecific/com.chrome.devtools.json，收到 HTML 会解析报错。
+    if (pathname.startsWith("/.well-known/")) {
+      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
+      return;
+    }
     const fallback = path.join(PUBLIC_DIR, "index.html");
     response.writeHead(404, { "content-type": MIME[".html"] }).end(fs.readFileSync(fallback));
     return;
@@ -196,7 +202,8 @@ async function main() {
       ["/hub/app.js", "hashchange"],
       ["/keyboard.html", "SJZ 三键音乐键盘"],
       ["/app.js", "loadCatalog"],
-      ["/data/music-catalog.json", "\"songs\""]
+      ["/data/music-catalog.json", "\"songs\""],
+      ["/.well-known/appspecific/com.chrome.devtools.json", "\"workspace\""]
     ]) {
       const response = await fetch(`${base}${pathname}`);
       const body = await response.text();

@@ -182,6 +182,9 @@ npx wrangler pages deploy public
 `wrangler.toml` 中的 `database_id` 需要替换成你自己 D1 实例的 id。
 `public/_routes.json` 把 Functions 限定在 `/api/*`，其余请求全部走静态资源。
 
+`public/.well-known/appspecific/com.chrome.devtools.json` 是给 Chrome DevTools 的一个 JSON 存根：
+没有这个文件时，该路径会落到 SPA 回退并返回 HTML，DevTools 解析时会报错刷控制台。
+
 ## 抓取脚手架
 
 `scripts/` 与根目录的 `orzice-*.js/html` 是配装数据的抓取工具，来源站点为 orzice.com，
