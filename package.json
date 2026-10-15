@@ -18,7 +18,8 @@
     "db:build-seed": "node scripts/build-d1-seed.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "preview:hub": "node scripts/build-hub-preview.mjs",
-    "deploy": "npx wrangler pages deploy public"
+    "deploy": "npx wrangler pages deploy public",
+    "ui:check": "node scripts/ui-check.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

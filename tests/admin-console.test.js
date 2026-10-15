@@ -46,3 +46,21 @@ test("审核台登录失败时给出可读提示而不是静默", () => {
   assert.match(hubSource, /adminError/, "缺少登录错误状态");
   assert.match(hubSource, /令牌无效/, "401 时未给出提示文案");
 });
+
+test("所有事件监听都走 document 委托，不绑定到会被重建的元素上", () => {
+  // 回归：render() 每次都用 innerHTML 重建 DOM。曾经把 submit/input 监听器
+  // 用 querySelector 绑到 #admin-login、#submit-form、#search-input 上，
+  // 结果启动时这些元素还不存在（或下一次渲染就被替换），
+  // 表现为「填了 token 点提交没反应」「搜索框打不了字」，且无任何报错。
+  const listenerTargets = [...hubSource.matchAll(/([\w.$]+)\.addEventListener\(/g)].map((match) => match[1]);
+  assert.ok(listenerTargets.length >= 5, `监听器数量异常：${listenerTargets.length}`);
+  const nonDelegated = listenerTargets.filter((target) => target !== "document" && target !== "window");
+  assert.deepEqual(nonDelegated, [], `以下监听器绑在元素上，会在重渲染后失效：${nonDelegated.join(", ")}`);
+
+  // 表单提交与搜索输入必须在 document 上按 id 分发
+  assert.match(hubSource, /document\.addEventListener\("submit"/, "缺少 document 级 submit 委托");
+  assert.match(hubSource, /form\?\.id === "admin-login"/, "submit 委托未处理 admin-login");
+  assert.match(hubSource, /form\?\.id === "submit-form"/, "submit 委托未处理 submit-form");
+  assert.match(hubSource, /document\.addEventListener\("input"/, "缺少 document 级 input 委托");
+  assert.match(hubSource, /event\.target\?\.id !== "search-input"/, "input 委托未限定搜索框");
+});

@@ -767,26 +767,14 @@ function bindEvents() {
     }
   });
 
-  const search = document.querySelector("#search-input");
-  if (search) {
-    search.addEventListener("input", debounce((event) => {
-      state.filters.q = event.target.value.trim();
-      writeHash({ replace: true });
-      loadList({ reset: true });
-    }, 320));
-  }
+  // 下面这些都改用 document 上的事件委托。
+  // 原因：render() 每次都用 innerHTML 重建整个 DOM，任何在启动时用
+  // querySelector 绑定到具体元素上的监听器，都会在下一次渲染后失效
+  // （这曾经导致「填入 token 点提交没反应」「搜索框打不了字」）。
 
-  const submitFormNode = document.querySelector("#submit-form");
-  if (submitFormNode) {
-    submitFormNode.addEventListener("submit", (event) => {
-      event.preventDefault();
-      submitForm();
-    });
-  }
-
-  const loginForm = document.querySelector("#admin-login");
-  if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (form?.id === "admin-login") {
       event.preventDefault();
       const token = document.querySelector("#admin-token")?.value?.trim();
       if (!token) return;
@@ -794,8 +782,20 @@ function bindEvents() {
       state.adminError = "";
       tokenStore.set(token);
       loadAdmin(true);
-    });
-  }
+      return;
+    }
+    if (form?.id === "submit-form") {
+      event.preventDefault();
+      submitForm();
+    }
+  });
+
+  document.addEventListener("input", debounce((event) => {
+    if (event.target?.id !== "search-input") return;
+    state.filters.q = event.target.value.trim();
+    writeHash({ replace: true });
+    loadList({ reset: true });
+  }, 320));
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && (state.detail || state.detailLoading)) {
