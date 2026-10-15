@@ -1,15 +1,37 @@
 #!/usr/bin/env node
-// 对已经运行中的本地服务器（wrangler pages dev 或 scripts/smoke-test.mjs）做真实 HTTP 验收。
+// 对已经运行中的本地服务器（wrangler pages dev）做真实 HTTP 验收。
 //
 // 用法：
 //   node scripts/verify-local.mjs [baseUrl] [adminToken]
 //
+// 令牌可以不传：脚本会自动读取仓库根目录的 .dev.vars。
+//
 // 与 scripts/smoke-test.mjs 的区别：本脚本不自带服务器、不自带假数据库，
 // 它验证的是「真实运行时 + 真实 D1」这条链路，包含写入与状态流转。
+// 因此它会消耗投稿额度（每客户端每小时 8 条），脚本会先探测剩余额度，
+// 额度不足时跳过相关用例并给出提示，而不是直接失败。
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASE = (process.argv[2] || "http://127.0.0.1:8788").replace(/\/$/, "");
-const ADMIN_TOKEN = process.argv[3] || process.env.ADMIN_TOKEN || "";
 const WAIT_MS = Number(process.env.WAIT_MS || 30000);
+
+/** 未显式传令牌时，从 .dev.vars 读取，避免手填出错。 */
+function readLocalToken() {
+  try {
+    const content = fs.readFileSync(path.join(ROOT, ".dev.vars"), "utf8");
+    return /^ADMIN_TOKEN=(.+)$/m.exec(content)?.[1]?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+const explicitToken = process.argv[3] || process.env.ADMIN_TOKEN || "";
+const ADMIN_TOKEN = explicitToken || readLocalToken();
+const TOKEN_SOURCE = explicitToken ? "命令行" : (ADMIN_TOKEN ? ".dev.vars" : "无");
 
 let passed = 0;
 const failures = [];
@@ -93,7 +115,7 @@ async function request(path, { method = "GET", body, headers = {}, retries = 3 }
 }
 
 async function main() {
-  console.log(`验收目标：${BASE}${ADMIN_TOKEN ? "（带管理令牌）" : "（无管理令牌）"}`);
+  console.log(`验收目标：${BASE}${ADMIN_TOKEN ? `（管理令牌来自 ${TOKEN_SOURCE}）` : "（无管理令牌，跳过审核流转）"}`);
   if (!(await waitForServer())) {
     process.exitCode = 2;
     return;
@@ -170,38 +192,77 @@ async function main() {
   check("不存在的方案返回 404", missing.status === 404, `实际 ${missing.status}`);
 
   console.log("\n[写入链路：投稿 → 审核 → 公开]");
-  const stamp = Date.now().toString(36);
-  const submission = {
-    game: "delta", mode: "operations", weapon: `本地验收方案 ${stamp}`, type: "步枪",
-    code: `验收方案-烽火地带-LOCAL-${stamp.toUpperCase()}`, author: "本地验收",
-    value: 123456, price: 654321, sensitivity: "仅在训练场校准过",
-    params: { control: 66, stability: 44, hip: 33, range: 22, ads: 11, recoil: "57" }
-  };
-  const created = await request("/api/schemes/submit", { method: "POST", body: submission });
-  check("投稿返回 201", created.status === 201, `实际 ${created.status} ${JSON.stringify(created.payload).slice(0, 160)}`);
-  const newId = created.payload?.id;
-  check("投稿状态为 pending", created.payload?.status === "pending");
+  const auth = ADMIN_TOKEN ? { authorization: `Bearer ${ADMIN_TOKEN}` } : {};
 
-  if (newId) {
-    const hidden = await request(`/api/schemes/${newId}`);
-    check("待审方案不对外可见（404）", hidden.status === 404, `实际 ${hidden.status}`);
+  // 投稿限额是「每客户端每小时 8 条」。先探测本小时已用多少，
+  // 避免脚本反复执行后自己把自己限流，导致偶发失败。
+  const hourAgo = Date.now() - 3_600_000;
+  const countThisHour = (items) => items.filter((item) => {
+    if (!/本地验收|冒烟|Apifox/.test(item.author || "")) return false;
+    const raw = String(item.createdAt || "").replace(" ", "T");
+    const time = Date.parse(raw.includes("Z") || raw.includes("+") ? raw : `${raw}Z`);
+    return Number.isFinite(time) ? time > hourAgo : true;
+  }).length;
 
-    const duplicate = await request("/api/schemes/submit", { method: "POST", body: submission });
-    check("重复分享码被拒绝（409）", duplicate.status === 409, `实际 ${duplicate.status}`);
+  let used = 0;
+  let usedLabel = "";
+  if (ADMIN_TOKEN) {
+    const recent = await request("/api/admin/schemes?limit=60&sort=new", { headers: auth });
+    used = countThisHour(recent.payload?.items || []);
+    usedLabel = "管理队列";
+  } else {
+    const recent = await request("/api/schemes?limit=60&sort=new");
+    used = countThisHour(recent.payload?.items || []);
+    usedLabel = "公开列表（不含待审，可能低估）";
+  }
+  const remaining = Math.max(0, 8 - used);
+  note(`本小时已用投稿额度：约 ${used}/8（来源：${usedLabel}），剩余约 ${remaining}`);
 
-    const invalid = await request("/api/schemes/submit", {
-      method: "POST", body: { weapon: "x", code: "not-a-code", game: "csgo" }
-    });
-    check("非法投稿返回 400", invalid.status === 400, `实际 ${invalid.status}`);
+  if (remaining === 0) {
+    console.log("  ⚠ 投稿额度已用尽，跳过写入链路。清空本地库后重试：");
+    console.log("      Remove-Item -Recurse -Force .wrangler-local\\persist");
+    console.log("      npm run db:migrate:local; npm run db:seed");
+  } else {
+    const stamp = Date.now().toString(36);
+    const submission = {
+      game: "delta", mode: "operations", weapon: `本地验收方案 ${stamp}`, type: "步枪",
+      code: `验收方案-烽火地带-LOCAL-${stamp.toUpperCase()}`, author: "本地验收",
+      value: 123456, price: 654321, sensitivity: "仅在训练场校准过",
+      params: { control: 66, stability: 44, hip: 33, range: 22, ads: 11, recoil: "57" }
+    };
+    const created = await request("/api/schemes/submit", { method: "POST", body: submission });
+    const newId = created.payload?.id;
+    if (created.status === 429) {
+      // 额度探测是估算值，可能刚好差一条。这不算缺陷，给出可执行的处理方式即可。
+      console.log(`  ⚠ 投稿额度已用尽（HTTP 429）：${created.payload?.message || ""}`);
+      console.log("     重置本地库后重试：");
+      console.log("       # 先停掉 npm run dev，然后：");
+      console.log("       npm run dev -- --reset-db");
+      console.log("       npm run db:migrate:local; npm run db:seed");
+    } else {
+      check("投稿返回 201", created.status === 201, `实际 ${created.status} ${JSON.stringify(created.payload).slice(0, 160)}`);
+      check("投稿状态为 pending", created.payload?.status === "pending");
+    }
 
-    const listAfter = await request(`/api/schemes?q=${encodeURIComponent(stamp)}`);
-    check("待审方案不出现在公开列表", listAfter.payload?.total === 0, `total=${listAfter.payload?.total}`);
+    if (newId) {
+      const hidden = await request(`/api/schemes/${newId}`);
+      check("待审方案不对外可见（404）", hidden.status === 404, `实际 ${hidden.status}`);
 
-    if (ADMIN_TOKEN) {
-      const auth = { authorization: `Bearer ${ADMIN_TOKEN}` };
-      const queue = await request("/api/admin/schemes?status=pending&limit=50", { headers: auth });
-      check("管理台可读取待审队列", queue.status === 200, `实际 ${queue.status}`);
-      check("队列包含刚投稿的方案", (queue.payload?.items || []).some((item) => item.id === newId));
+      const duplicate = await request("/api/schemes/submit", { method: "POST", body: submission });
+      check("重复分享码被拒绝（409）", duplicate.status === 409, `实际 ${duplicate.status}`);
+
+      const invalid = await request("/api/schemes/submit", {
+        method: "POST", body: { weapon: "x", code: "not-a-code", game: "csgo" }
+      });
+      check("非法投稿返回 400", invalid.status === 400, `实际 ${invalid.status}`);
+
+      const listAfter = await request(`/api/schemes?q=${encodeURIComponent(stamp)}`);
+      check("待审方案不出现在公开列表", listAfter.payload?.total === 0, `total=${listAfter.payload?.total}`);
+
+      if (ADMIN_TOKEN) {
+        const queue = await request("/api/admin/schemes?status=pending&limit=60", { headers: auth });
+        check("管理台可读取待审队列", queue.status === 200, `实际 ${queue.status}`);
+        check("队列包含刚投稿的方案", (queue.payload?.items || []).some((item) => item.id === newId));
 
       const approved = await request("/api/admin/review", {
         method: "POST", headers: auth, body: { schemeId: newId, action: "approve", note: "本地验收" }
@@ -250,7 +311,8 @@ async function main() {
       const queue = await request("/api/admin/schemes", { headers: { authorization: "Bearer wrong" } });
       const adminClosed = queue.status === 503 || queue.status === 401;
       check("未配置令牌时管理接口关闭", adminClosed, `实际 ${queue.status}`);
-      note("未提供管理令牌，跳过审核流转部分；用 npm run dev:local 会自动生成一个令牌");
+      note("未提供管理令牌，跳过审核流转部分；用 npm run dev 会自动生成并复用 .dev.vars 中的令牌");
+    }
     }
   }
 
