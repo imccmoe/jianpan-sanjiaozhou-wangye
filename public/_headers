@@ -1,0 +1,12 @@
+# Cloudflare Pages 响应头配置。
+#
+# 静态资源强制每次校验：开发与上线阶段都在频繁改样式，
+# 而浏览器对没有 ETag/Last-Modified 的响应会走弱缓存，
+# 表现为「改完 CSS 但页面没变」。no-cache 表示可以缓存，但每次使用前必须校验，
+# 校验通过则返回 304（Pages 会自动带 ETag），既正确又不浪费流量。
+/*
+  Cache-Control: no-cache, must-revalidate
+
+# 带哈希或版本号的资源可以长期缓存（当前没有构建步骤，先留作扩展点）
+# /assets/*
+#   Cache-Control: public, max-age=31536000, immutable

@@ -1,0 +1,14 @@
+fix(theme): 移除按钮悬停变色，并为静态资源加缓存校验
+
+与键盘站同源问题：`.button:hover` 与 `.button.primary` 优先级相同（0,2,0），
+通用规则写在后面，悬停时把紫色底换掉、白字消失。用户反馈后决定直接去掉悬停变色。
+
+- .button:hover:not(:disabled) 与 .button.primary:hover/:active 全部移除
+- 主按钮文字色保持 --on-accent（不能用 inherit，会继承到深色的 --ink）
+- 新增 public/_headers：全部静态资源 Cache-Control: no-cache, must-revalidate，
+  Pages 自带 ETag，浏览器每次校验、未变化返回 304，避免「改完 CSS 页面没变」
+- hub/index.html 的样式表引用加版本号（./hub.css?v=2）
+- tests/contrast.test.js：改为断言「主按钮不参与悬停变色」+「文字色不得用 inherit」
+  +「_headers 声明 no-cache 且 HTML 带版本号」
+
+验证：npm test 36 通过；hub 悬停检查 0 项不足；对比度检查 0 项不达标
