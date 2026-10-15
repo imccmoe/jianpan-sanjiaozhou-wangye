@@ -1,0 +1,584 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ZFQ 配装方案站 API",
+    "version": "1.0.0",
+    "description": "配装方案站（三角洲行动 / 无畏契约）的后端接口。\n\n**调试提示**\n- 服务地址填 `http://127.0.0.1:8788`（`npm run dev` 启动后的地址），不要带尾斜杠。\n- 方案详情是 `GET /api/schemes/{id}`，其中 `{id}` 是**路径参数占位符**，\n  值要填在参数列表里（例如 `orzice-gun-1427`），不要把值塞进花括号。\n  写成 `/api/schemes/{orzice-gun-1427}` 或漏掉 `/` 后那段，都会命中列表接口返回全部数据。\n- 审核接口需要请求头 `Authorization: Bearer <ADMIN_TOKEN>`，\n  令牌在项目根目录的 `.dev.vars` 里。\n- 所有响应的 `ok` 字段为 `true` 表示成功；失败时返回 `{ ok:false, error, message }`。"
+  },
+  "servers": [
+    { "url": "http://127.0.0.1:8788", "description": "本地开发（npm run dev）" },
+    { "url": "https://wy-zfq-config-hub.pages.dev", "description": "生产（部署后替换为实际域名）" }
+  ],
+  "tags": [
+    { "name": "公开", "description": "无需鉴权" },
+    { "name": "投稿与反馈", "description": "匿名可写，有频率限制" },
+    { "name": "管理", "description": "需要 Bearer 令牌" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "服务端 ADMIN_TOKEN，本地见 .dev.vars；生产用 wrangler pages secret put ADMIN_TOKEN 设置"
+      }
+    },
+    "parameters": {
+      "schemeId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "方案 id。形如 `orzice-gun-1427`（导入数据）或 `hub_xxxxxxxx`（社区投稿）。不能带花括号。",
+        "schema": { "type": "string" },
+        "example": "orzice-gun-1427"
+      },
+      "game": {
+        "name": "game",
+        "in": "query",
+        "description": "游戏",
+        "schema": { "type": "string", "enum": ["delta", "valorant"] },
+        "example": "delta"
+      },
+      "mode": {
+        "name": "mode",
+        "in": "query",
+        "description": "模式",
+        "schema": { "type": "string", "enum": ["operations", "warfare", "standard"] },
+        "example": "operations"
+      },
+      "type": {
+        "name": "type",
+        "in": "query",
+        "description": "武器类型，需 URL 编码（如 步枪 = %E6%AD%A5%E6%9E%AA）",
+        "schema": { "type": "string" },
+        "example": "步枪"
+      },
+      "q": {
+        "name": "q",
+        "in": "query",
+        "description": "关键词，匹配方案名、武器名、类型、作者、分享码；`%` 与 `_` 会被转义",
+        "schema": { "type": "string" },
+        "example": "QCQ171"
+      },
+      "author": {
+        "name": "author",
+        "in": "query",
+        "description": "作者名模糊匹配",
+        "schema": { "type": "string" }
+      },
+      "minValue": {
+        "name": "minValue",
+        "in": "query",
+        "description": "最低价值分",
+        "schema": { "type": "integer", "minimum": 0 },
+        "example": 500000
+      },
+      "sort": {
+        "name": "sort",
+        "in": "query",
+        "description": "排序：hot=热度（默认）、new=最新、value=价值、price=造价、name=名称",
+        "schema": { "type": "string", "enum": ["hot", "new", "value", "price", "name"], "default": "hot" }
+      },
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "description": "每页条数，上限 60",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 60, "default": 24 }
+      },
+      "offset": {
+        "name": "offset",
+        "in": "query",
+        "description": "偏移量",
+        "schema": { "type": "integer", "minimum": 0, "default": 0 }
+      },
+      "status": {
+        "name": "status",
+        "in": "query",
+        "description": "管理接口的状态筛选",
+        "schema": { "type": "string", "enum": ["active", "pending", "rejected", "hidden"] },
+        "example": "pending"
+      }
+    },
+    "schemas": {
+      "Scheme": {
+        "type": "object",
+        "description": "列表项",
+        "properties": {
+          "id": { "type": "string", "example": "orzice-gun-1427" },
+          "game": { "type": "string", "example": "delta" },
+          "gameLabel": { "type": "string", "example": "三角洲行动" },
+          "mode": { "type": "string", "example": "operations" },
+          "modeLabel": { "type": "string", "example": "烽火地带" },
+          "weapon": { "type": "string", "example": "18W金枪客MCXLT" },
+          "objectName": { "type": "string", "example": "MCX LT突击步枪" },
+          "type": { "type": "string", "example": "步枪" },
+          "ammo": { "type": "string" },
+          "map": { "type": "string" },
+          "image": { "type": "string" },
+          "value": { "type": "integer", "example": 172000 },
+          "price": { "type": "integer", "example": 204000 },
+          "users": { "type": "integer", "example": 12808000 },
+          "likes": { "type": "integer", "example": 1151 },
+          "author": { "type": "string", "example": "Life" },
+          "code": { "type": "string", "example": "MCX LT突击步枪-烽火地带-6IUMN00E4I6CGSILMIOI" },
+          "status": { "type": "string", "enum": ["active", "pending", "rejected", "hidden"] },
+          "source": { "type": "string", "example": "orzice-authorized" },
+          "createdAt": { "type": "string" },
+          "sensitivity": { "type": "string" }
+        }
+      },
+      "SchemeDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Scheme" },
+          {
+            "type": "object",
+            "properties": {
+              "params": {
+                "type": "object",
+                "description": "改装参数（缺省字段不会出现）",
+                "properties": {
+                  "control": { "type": "integer" },
+                  "stability": { "type": "integer" },
+                  "hip": { "type": "integer" },
+                  "range": { "type": "integer" },
+                  "ads": { "type": "integer" },
+                  "recoil": { "type": "string" },
+                  "interval": { "type": "string" },
+                  "scope": { "type": "string" }
+                }
+              },
+              "feedback": {
+                "type": "object",
+                "description": "实时反馈统计（来自 scheme_feedback 表，覆盖导入数据里的静态快照）",
+                "properties": {
+                  "good": { "type": "integer" },
+                  "inaccurate": { "type": "integer" },
+                  "weak": { "type": "integer" },
+                  "invalid": { "type": "integer" }
+                }
+              },
+              "sourceUrl": { "type": "string" },
+              "rawId": { "type": "string", "nullable": true },
+              "updatedAt": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "error": { "type": "string", "example": "not_found" },
+          "message": { "type": "string", "example": "方案不存在或尚未通过审核" }
+        }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "方案不存在、未通过审核，或已下架",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "ok": false, "error": "not_found", "message": "方案不存在或尚未通过审核" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "令牌缺失或错误",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "ok": false, "error": "unauthorized", "message": "管理令牌无效" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/meta": {
+      "get": {
+        "tags": ["公开"],
+        "summary": "站点元信息与筛选面",
+        "description": "返回方案总数、游戏/模式/类型分布、热门作者。前端首屏调用它来渲染侧栏筛选。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "total": 1316,
+                  "games": [{ "id": "delta", "label": "三角洲行动" }, { "id": "valorant", "label": "无畏契约" }],
+                  "modes": [{ "id": "operations", "label": "烽火地带" }],
+                  "facets": {
+                    "types": [{ "name": "步枪", "label": "步枪", "count": 639 }],
+                    "games": [{ "name": "delta", "label": "三角洲行动", "count": 1297 }],
+                    "modes": [{ "name": "operations", "label": "烽火地带", "count": 1097 }]
+                  },
+                  "topAuthors": [{ "name": "羊驼（鼠攻教学父）", "count": 109 }]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schemes": {
+      "get": {
+        "tags": ["公开"],
+        "summary": "方案列表（筛选 / 排序 / 分页）",
+        "description": "只返回 `status = active` 的方案。注意 `/api/schemes/` 带尾斜杠也会命中本接口。",
+        "parameters": [
+          { "$ref": "#/components/parameters/game" },
+          { "$ref": "#/components/parameters/mode" },
+          { "$ref": "#/components/parameters/type" },
+          { "$ref": "#/components/parameters/q" },
+          { "$ref": "#/components/parameters/author" },
+          { "$ref": "#/components/parameters/minValue" },
+          { "$ref": "#/components/parameters/sort" },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "items": [
+                    {
+                      "id": "orzice-gun-1427",
+                      "game": "delta",
+                      "gameLabel": "三角洲行动",
+                      "mode": "operations",
+                      "modeLabel": "烽火地带",
+                      "weapon": "18W金枪客MCXLT",
+                      "objectName": "MCX LT突击步枪",
+                      "type": "步枪",
+                      "value": 172000,
+                      "price": 204000,
+                      "users": 12808000,
+                      "likes": 1151,
+                      "author": "Life",
+                      "code": "MCX LT突击步枪-烽火地带-6IUMN00E4I6CGSILMIOI",
+                      "status": "active"
+                    }
+                  ],
+                  "total": 1316,
+                  "limit": 24,
+                  "offset": 0,
+                  "sort": "hot",
+                  "hasMore": true,
+                  "facets": { "types": [], "games": [], "modes": [] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schemes/{id}": {
+      "get": {
+        "tags": ["公开"],
+        "summary": "方案详情",
+        "description": "返回方案完整信息、改装参数、实时反馈统计与同类推荐。\n\n**常见错误**：把 `{id}` 当成要替换的文本写成 `/api/schemes/{orzice-gun-1427}`，\n或在 Apifox 里没给路径参数填值 —— 两种情况都会退化成 `/api/schemes` 并返回全部数据。\n正确做法是把路径设为 `/api/schemes/{id}`，然后在参数表里给 `id` 填 `orzice-gun-1427`。",
+        "parameters": [{ "$ref": "#/components/parameters/schemeId" }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "scheme": {
+                    "id": "orzice-gun-1427",
+                    "gameLabel": "三角洲行动",
+                    "modeLabel": "烽火地带",
+                    "weapon": "18W金枪客MCXLT",
+                    "objectName": "MCX LT突击步枪",
+                    "type": "步枪",
+                    "value": 172000,
+                    "price": 204000,
+                    "users": 12808000,
+                    "likes": 1151,
+                    "author": "Life",
+                    "code": "MCX LT突击步枪-烽火地带-6IUMN00E4I6CGSILMIOI",
+                    "status": "active",
+                    "params": { "control": 63, "stability": 0, "hip": 37, "range": 30, "ads": 0, "recoil": "67" },
+                    "feedback": { "good": 0, "inaccurate": 0, "weak": 0, "invalid": 0 },
+                    "sourceUrl": "https://orzice.com/v/gun_gqm?id=1427"
+                  },
+                  "related": [{ "id": "orzice-gun-1435", "weapon": "巅峰赛专用K437", "type": "步枪" }]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "缺少 id",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "missing_id", "message": "缺少方案 id" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/schemes/submit": {
+      "post": {
+        "tags": ["投稿与反馈"],
+        "summary": "投稿配装方案（匿名）",
+        "description": "提交后进入 `pending` 待审状态，审核通过才对外可见。\n\n限制：同一客户端每小时最多 8 条；`code` 必须包含 `-`（游戏内复制的分享码都带）；\n`code` 已存在时返回 409。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["weapon", "code"],
+                "properties": {
+                  "game": { "type": "string", "enum": ["delta", "valorant"], "default": "delta" },
+                  "mode": { "type": "string", "enum": ["operations", "warfare", "standard"] },
+                  "weapon": { "type": "string", "maxLength": 60, "description": "方案名称，至少 2 字符" },
+                  "objectName": { "type": "string", "maxLength": 60 },
+                  "type": { "type": "string", "maxLength": 40, "default": "步枪" },
+                  "ammo": { "type": "string", "maxLength": 20 },
+                  "map": { "type": "string", "maxLength": 30 },
+                  "image": { "type": "string", "description": "http(s) 绝对地址或站内相对路径" },
+                  "author": { "type": "string", "maxLength": 40, "default": "匿名玩家" },
+                  "value": { "type": "integer", "minimum": 0 },
+                  "price": { "type": "integer", "minimum": 0 },
+                  "sensitivity": { "type": "string", "maxLength": 200 },
+                  "code": { "type": "string", "maxLength": 160, "example": "M4A1-烽火地带-XXXX-0001" },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "control": { "type": "integer", "maximum": 999 },
+                      "stability": { "type": "integer", "maximum": 999 },
+                      "hip": { "type": "integer", "maximum": 999 },
+                      "range": { "type": "integer", "maximum": 999 },
+                      "ads": { "type": "integer", "maximum": 999 },
+                      "recoil": { "type": "string", "maxLength": 80 }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "game": "delta",
+                "mode": "operations",
+                "weapon": "Apifox 测试方案",
+                "objectName": "M4A1",
+                "type": "步枪",
+                "author": "Apifox",
+                "value": 123456,
+                "price": 654321,
+                "code": "M4A1-烽火地带-APIFOX-0001",
+                "params": { "control": 66, "stability": 44, "recoil": "57" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已受理，进入待审",
+            "content": {
+              "application/json": {
+                "example": { "ok": true, "id": "hub_cdd8900e54df461c96eff45c", "status": "pending", "message": "投稿已提交，审核通过后会出现在列表中" }
+              }
+            }
+          },
+          "400": {
+            "description": "校验失败",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "invalid_submission", "message": "weapon 至少 2 个字符；code 必须是带有 - 的方案分享码（4~160 字符）", "details": [] }
+              }
+            }
+          },
+          "409": {
+            "description": "分享码重复",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "duplicate_code", "message": "该方案分享码已存在，可直接搜索查看" }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过 16KB",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "payload_too_large", "message": "请求体不得超过 16384 字节" }
+              }
+            }
+          },
+          "429": {
+            "description": "超出频率限制",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "rate_limited", "message": "每个客户端每小时最多投稿 8 条，请稍后再试" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schemes/feedback": {
+      "post": {
+        "tags": ["投稿与反馈"],
+        "summary": "提交方案反馈",
+        "description": "同一客户端对同一方案的同一类型反馈 24 小时内去重（重复返回 409）。\n`good` 会累加方案的 like_count。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["schemeId", "type"],
+                "properties": {
+                  "schemeId": { "type": "string", "example": "orzice-gun-1427" },
+                  "type": { "type": "string", "enum": ["good", "inaccurate", "weak", "invalid"] },
+                  "note": { "type": "string", "maxLength": 200 }
+                }
+              },
+              "example": { "schemeId": "orzice-gun-1427", "type": "good", "note": "训练场手感很稳" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已记录",
+            "content": {
+              "application/json": { "example": { "ok": true, "schemeId": "orzice-gun-1427", "type": "good", "message": "反馈已记录" } }
+            }
+          },
+          "400": {
+            "description": "缺少 schemeId 或 type 非法",
+            "content": {
+              "application/json": { "example": { "ok": false, "error": "invalid_type", "message": "type 必须是 good / inaccurate / weak / invalid" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "重复反馈",
+            "content": {
+              "application/json": { "example": { "ok": false, "error": "duplicate_feedback", "message": "今天已经提交过同样的反馈" } }
+            }
+          },
+          "413": {
+            "description": "请求体超过 4KB",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "payload_too_large", "message": "请求体不得超过 4096 字节" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/schemes": {
+      "get": {
+        "tags": ["管理"],
+        "summary": "审核队列",
+        "security": [{ "adminToken": [] }],
+        "description": "按状态筛选方案并返回各状态计数。未配置 ADMIN_TOKEN 时返回 503 且接口关闭。",
+        "parameters": [
+          { "$ref": "#/components/parameters/status" },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/sort" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "items": [{ "id": "hub_cdd8900e54df461c96eff45c", "weapon": "Apifox 测试方案", "status": "pending", "author": "Apifox" }],
+                  "total": 1,
+                  "statusFilter": "pending",
+                  "stats": { "active": 1314, "pending": 1, "rejected": 0, "hidden": 0 }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": {
+            "description": "服务端未配置 ADMIN_TOKEN",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "admin_token_missing", "message": "服务端未配置 ADMIN_TOKEN，管理接口已关闭" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/review": {
+      "post": {
+        "tags": ["管理"],
+        "summary": "审核方案",
+        "security": [{ "adminToken": [] }],
+        "description": "状态流转：\n- `approve`：pending / rejected / hidden → active\n- `reject`：pending / active / hidden → rejected\n- `hide`：active / pending → hidden\n- `restore`：hidden / rejected → active\n\n非法流转返回 409，每次变更写入 audit_logs。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["schemeId", "action"],
+                "properties": {
+                  "schemeId": { "type": "string" },
+                  "action": { "type": "string", "enum": ["approve", "reject", "hide", "restore"] },
+                  "note": { "type": "string", "maxLength": 200 },
+                  "adminId": { "type": "string", "maxLength": 60, "default": "admin" }
+                }
+              },
+              "example": { "schemeId": "hub_cdd8900e54df461c96eff45c", "action": "approve", "note": "参数合理" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": { "example": { "ok": true, "id": "hub_cdd8900e54df461c96eff45c", "from": "pending", "status": "active", "action": "approve" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": {
+            "description": "缺少 schemeId 或 action 非法",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "invalid_action", "message": "action 必须是 approve / reject / hide / restore" }
+              }
+            }
+          },
+          "404": {
+            "description": "方案不存在",
+            "content": {
+              "application/json": { "example": { "ok": false, "error": "not_found", "message": "方案不存在" } }
+            }
+          },
+          "503": {
+            "description": "服务端未配置 ADMIN_TOKEN",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "admin_token_missing", "message": "服务端未配置 ADMIN_TOKEN，管理接口已关闭" }
+              }
+            }
+          },
+          "409": {
+            "description": "非法状态流转",
+            "content": {
+              "application/json": {
+                "example": { "ok": false, "error": "invalid_transition", "message": "方案当前状态为 active，不能执行 approve", "details": { "from": "active", "allowedFrom": ["pending", "rejected", "hidden"] } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

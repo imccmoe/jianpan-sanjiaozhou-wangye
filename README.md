@@ -103,6 +103,27 @@ Remove-Item -Recurse -Force .wrangler-local\persist
 
 `sort` 取值：`hot`（默认，按使用量）、`new`、`value`、`price`、`name`。`limit` 上限 60。
 
+### 用 Apifox / Postman 调试
+
+可以直接导入 [docs/openapi.json](docs/openapi.json)（OpenAPI 3.1）：
+
+```powershell
+npm run dev          # 先起服务，地址 http://127.0.0.1:8788
+npm run openapi      # 校验定义与 functions/api 实现是否一致
+```
+
+导入后服务地址选 `http://127.0.0.1:8788`，管理接口在环境里配一个 Bearer 令牌（值见 `.dev.vars`）。
+
+调试详情接口时注意 **`{id}` 是路径参数占位符**，不是要替换的文本：
+
+| 写法 | 结果 |
+| --- | --- |
+| `GET /api/schemes/orzice-gun-1427` | ✅ 详情 |
+| `GET /api/schemes/{id}` + 参数 `id=orzice-gun-1427` | ✅ 详情（Apifox 里推荐这种） |
+| `GET /api/schemes/{orzice-gun-1427}` | ❌ 404，`{...}` 被当成字面量 |
+| `GET /api/schemes/` （尾斜杠，或路径参数留空） | ⚠️ 200 但返回**全部列表** |
+| `GET /api/schemes` | 列表接口，正常返回全部 |
+
 ### 管理令牌
 
 审核台位于 `/hub/#/admin`，令牌只存在 `sessionStorage`，不会写进页面。
