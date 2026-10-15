@@ -19,7 +19,9 @@
     "verify:local": "node scripts/verify-local.mjs",
     "preview:hub": "node scripts/build-hub-preview.mjs",
     "deploy": "npx wrangler pages deploy public",
-    "ui:check": "node scripts/ui-check.mjs"
+    "ui:check": "node scripts/ui-check.mjs",
+    "ui:theme": "node scripts/ui-theme-check.mjs",
+    "shots:theme": "node scripts/theme-shots.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

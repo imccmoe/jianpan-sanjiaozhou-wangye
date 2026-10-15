@@ -2,6 +2,7 @@ import { compileSong, formatDuration, startPreview, stopPreview } from "./music-
 import { BOOT_PID, inspectUpgradeDevices, MusicHidDevice, requestBootloader, uploadFirmware, waitForAppReenumeration, webHidSupported } from "./device.js";
 import { decryptFirmware } from "./firmware.js";
 import { KEY_USAGES, spinCounts } from "./device-config.js";
+import { cycleThemeMode, getThemeMode, modeLabel, setThemeMode, watchSystemTheme } from "./theme.js";
 
 const APP_VERSION = "1.15";
 const TEST_STAGE_LABELS = {
@@ -215,6 +216,9 @@ function render() {
           </select>
           <button class="button" data-action="scan-device">刷新已授权设备</button>
           <button class="button primary" data-action="connect-device">连接</button>
+          <button class="theme-toggle" data-action="toggle-theme"
+            aria-label="切换主题，当前${modeLabel(getThemeMode())}"
+            title="切换主题：跟随系统 / 白天 / 夜晚（当前：${modeLabel(getThemeMode())}）">${modeLabel(getThemeMode())}</button>
           <span class="device-state ${state.device.connected ? "online" : ""}">${deviceStatus}</span>
         </div>
       </header>
@@ -478,6 +482,29 @@ function bindEvents() {
   document.querySelector("#key-capture")?.addEventListener("keydown", captureKey);
   document.querySelector("#firmware-input")?.addEventListener("change", readFirmware);
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button)));
+  // 注意：主题按钮统一走上面的 [data-action] 分发（handleAction 里有 toggle-theme 分支）。
+  // 曾经在这里又额外绑了一次 switchTheme，导致一次点击触发两次、跳过中间模式。
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+    if (event.key !== "L" && event.key !== "l") return;
+    event.preventDefault();
+    switchTheme();
+  });
+}
+
+/**
+ * 切换主题。这里**不能**调用 render()：那会重建页面节点，
+ * 把「按键捕获」输入框里正在录制的按键状态清空。
+ * 主题只需要改 <html data-theme>（由 theme.js 负责）加上按钮文案。
+ */
+function switchTheme() {
+  const mode = cycleThemeMode();
+  document.querySelectorAll('[data-action="toggle-theme"]').forEach((button) => {
+    button.textContent = modeLabel(mode);
+    button.title = `切换主题：跟随系统 / 白天 / 夜晚（当前：${modeLabel(mode)}）`;
+    button.setAttribute("aria-label", `切换主题，当前${modeLabel(mode)}`);
+  });
+  showToast(`主题：${modeLabel(mode)}`);
 }
 
 function captureKey(event) {
@@ -526,6 +553,7 @@ function handleAction(button) {
   if (action === "start-update") return startFirmwareUpdate();
   if (action === "continue-update") return continueFirmwareUpdate();
   if (action === "complete-update") return completeFirmwareUpdate();
+  if (action === "toggle-theme") return switchTheme();
 }
 
 function assignSong(slot, songId) {
@@ -982,6 +1010,15 @@ async function loadCatalog(reload = false) {
     showToast(`音乐库读取失败：${error.message}`, "error");
   }
 }
+
+// 主题：引导脚本已设好 data-theme，这里恢复存储的模式并在 auto 下跟随系统。
+// 只更新按钮文案，不调用 render()，以免打断「按键捕获」等交互状态。
+setThemeMode(getThemeMode());
+watchSystemTheme(() => {
+  document.querySelectorAll('[data-action="toggle-theme"]').forEach((button) => {
+    button.textContent = modeLabel(getThemeMode());
+  });
+});
 
 render();
 loadCatalog();

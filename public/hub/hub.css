@@ -1,5 +1,14 @@
-/* 配装方案站样式。与键盘网页共用设计语言，但为深色数据密集型界面单独定义。 */
-:root {
+/* 配装方案站样式。与键盘网页共用设计语言，支持跟随系统的亮/暗主题。 */
+
+/* 主题由 <html data-theme="light|dark"> 决定，该属性由 app.js 里的
+   applyTheme() 与 index.html 的内联引导脚本维护：
+   - 模式为 auto 时跟随 prefers-color-scheme（下面两组分别写在 media query 里）
+   - 显式选择 light / dark 时由属性选择器覆盖
+   两套主题都必须覆盖全部语义变量，否则会出现半亮半暗。 */
+
+/* ---------- 暗色主题变量 ---------- */
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
   --ink: #e8eaf2;
   --muted: #9498ad;
@@ -11,6 +20,42 @@
   --amber: #ffb454;
   --mint: #6fe0cf;
   --rose: #ff7a8a;
+  --on-accent: #ffffff;
+  --chip-active-ink: #e6e2ff;
+  --media-from: #e9ebf2;
+  --media-to: #f7f8fb;
+  --media-fallback: #b9bed2;
+  --outline-mint: #2f5f58;
+  --outline-amber: #5f4a24;
+  --outline-rose: #5f2b34;
+  --backdrop: rgba(6, 7, 12, 0.72);
+  --shadow-toast: rgba(0, 0, 0, 0.4);
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+/* ---------- 亮色主题变量 ---------- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ink: #121225;
+  --muted: #5f6376;
+  --line: #d9dbe4;
+  --canvas: #f4f5f9;
+  --panel: #ffffff;
+  --panel-2: #eef0f6;
+  --violet: #5b4bd0;
+  --amber: #8a6410;
+  --mint: #0f7d6d;
+  --rose: #c8434f;
+  --on-accent: #ffffff;
+  --chip-active-ink: #ecebff;
+  --media-from: #e6e8f2;
+  --media-to: #f6f7fb;
+  --media-fallback: #b9bed2;
+  --outline-mint: #9fd8cf;
+  --outline-amber: #dcc48d;
+  --outline-rose: #e6b2b8;
+  --backdrop: rgba(24, 26, 40, 0.5);
+  --shadow-toast: rgba(24, 26, 40, 0.18);
   font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
 }
 
@@ -26,10 +71,15 @@ a { color: var(--mint); }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand strong { font-size: 20px; }
 .brand span { color: var(--muted); font-size: 12px; }
-.topbar nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.topbar nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .topbar nav a { padding: 7px 13px; border-radius: 8px; color: var(--ink); text-decoration: none; font-size: 13px; border: 1px solid transparent; }
 .topbar nav a:hover { border-color: var(--line); }
 .topbar nav a.active { background: var(--panel-2); border-color: var(--violet); }
+
+/* 主题切换按钮 */
+.theme-toggle { margin-left: 6px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 7px 12px; font-size: 13px; white-space: nowrap; }
+.theme-toggle:hover { border-color: var(--violet); }
+.theme-toggle .icon { margin-right: 5px; }
 
 .layout { display: grid; grid-template-columns: 246px 1fr; gap: 22px; padding: 22px 24px 60px; max-width: 1560px; margin: 0 auto; align-items: start; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
@@ -41,9 +91,9 @@ a { color: var(--mint); }
 .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12px; }
 .chip:hover { border-color: var(--violet); }
-.chip.active { background: var(--violet); border-color: var(--violet); color: #fff; }
+.chip.active { background: var(--violet); border-color: var(--violet); color: var(--on-accent); }
 .chip em { font-style: normal; color: var(--muted); margin-left: 5px; font-size: 11px; }
-.chip.active em { color: #e6e2ff; }
+.chip.active em { color: var(--chip-active-ink); }
 
 .search-strip { display: flex; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; flex-wrap: wrap; }
 .search-strip input[type="search"] { flex: 1 1 260px; }
@@ -53,7 +103,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 
 .button { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
 .button:hover:not(:disabled) { border-color: var(--violet); }
-.button.primary { background: var(--violet); border-color: var(--violet); color: #fff; }
+.button.primary { background: var(--violet); border-color: var(--violet); color: var(--on-accent); }
 .button.ghost { background: transparent; }
 .button.danger { border-color: var(--rose); color: var(--rose); }
 
@@ -64,15 +114,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 14px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; text-align: left; padding: 0; display: flex; flex-direction: column; color: inherit; }
 .card:hover { border-color: var(--violet); transform: translateY(-2px); transition: transform 0.12s ease; }
-.card-media { height: 132px; background: linear-gradient(135deg, #1d2036, #12131f); display: grid; place-items: center; overflow: hidden; }
+.card-media { height: 132px; background: linear-gradient(135deg, var(--media-from), var(--media-to)); display: grid; place-items: center; overflow: hidden; }
+/* 卡片图是官方商品图：82% 透明、可见像素平均亮度仅 44/255。
+   若底板跟着主题变暗，枪械会与背景融为一片，所以两套主题都用浅色底板。 */
 .card-media img { width: 100%; height: 100%; object-fit: contain; }
-.card-media .fallback { font-size: 30px; color: #3a3f5c; }
+.card-media .fallback { font-size: 30px; color: var(--media-fallback); }
 .card-body { padding: 12px 14px 14px; display: grid; gap: 8px; }
 .card-title { font-size: 15px; font-weight: 600; line-height: 1.3; }
 .tag-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .tag { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
-.tag.game { color: var(--mint); border-color: #2f5f58; }
-.tag.mode { color: var(--amber); border-color: #5f4a24; }
+.tag.game { color: var(--mint); border-color: var(--outline-mint); }
+.tag.mode { color: var(--amber); border-color: var(--outline-amber); }
 .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 10px; font-size: 12px; color: var(--muted); }
 .metrics b { color: var(--ink); font-weight: 600; }
 .card-foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; }
@@ -85,7 +137,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 22px; color: var(--muted); font-size: 13px; }
 
-.drawer-backdrop { position: fixed; inset: 0; background: rgba(6, 7, 12, 0.72); display: flex; justify-content: flex-end; z-index: 40; }
+.drawer-backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; justify-content: flex-end; z-index: 40; }
 .drawer { width: min(560px, 100%); background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 22px; display: grid; gap: 16px; align-content: start; }
 .drawer header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
 .drawer h2 { margin: 0; font-size: 20px; }
@@ -106,7 +158,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 .hint { font-size: 12px; color: var(--muted); }
 .error-text { color: var(--rose); font-size: 13px; }
 
-.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--violet); color: var(--ink); padding: 11px 18px; border-radius: 10px; font-size: 13px; z-index: 60; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--violet); color: var(--ink); padding: 11px 18px; border-radius: 10px; font-size: 13px; z-index: 60; box-shadow: 0 12px 30px var(--shadow-toast); }
 .toast.error { border-color: var(--rose); }
 .toast.success { border-color: var(--mint); }
 
@@ -126,9 +178,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet); ou
 .admin-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-actions .button { padding: 5px 9px; font-size: 12px; }
 .status-pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); }
-.status-pill.active { color: var(--mint); border-color: #2f5f58; }
-.status-pill.pending { color: var(--amber); border-color: #5f4a24; }
-.status-pill.rejected, .status-pill.hidden { color: var(--rose); border-color: #5f2b34; }
+.status-pill.active { color: var(--mint); border-color: var(--outline-mint); }
+.status-pill.pending { color: var(--amber); border-color: var(--outline-amber); }
+.status-pill.rejected, .status-pill.hidden { color: var(--rose); border-color: var(--outline-rose); }
 
 .landing { min-height: 100vh; display: grid; place-items: center; padding: 40px 24px; }
 .landing-inner { max-width: 900px; display: grid; gap: 26px; }

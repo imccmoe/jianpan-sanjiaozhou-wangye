@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="三角洲行动 / 无畏契约 配装方案库：搜索、筛选、分享码一键复制与社区投稿。" />
     <title>ZFQ 配装方案站</title>
+    <script>
+      // 主题引导：必须在样式表之前执行，否则会先渲染成默认暗色再跳成亮色（白闪）。
+      // 规则与 public/hub/theme.js 保持一致：auto 时跟随系统，否则用存储值。
+      (function () {
+        try {
+          var stored = localStorage.getItem("zh-hub-theme");
+          var mode = stored === "light" || stored === "dark" ? stored : "auto";
+          var resolved = mode === "auto"
+            ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : mode;
+          var root = document.documentElement;
+          root.dataset.theme = resolved;
+          root.dataset.themeMode = mode;
+          root.style.colorScheme = resolved;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./hub.css" />
   </head>
   <body>

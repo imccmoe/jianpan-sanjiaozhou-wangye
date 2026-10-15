@@ -1,5 +1,6 @@
 // 配装站前端主控：哈希路由 + 事件委托渲染。
 import { api, errorText } from "./api.js";
+import { cycleThemeMode, getThemeMode, modeLabel, setThemeMode, watchSystemTheme } from "./theme.js";
 import {
   barWidth, copyText, count, dateTime, debounce, escapeHtml, money,
   paramEntries, shareUrl, showToast, statusLabel
@@ -188,11 +189,15 @@ function header() {
     ["submit", "#/submit", "投稿方案"],
     ["admin", "#/admin", "审核台"]
   ];
+  const themeMode = getThemeMode();
   return `<header class="topbar">
     <div class="brand"><strong>ZFQ 配装方案站</strong><span>三角洲行动 / 无畏契约 · 社区方案库</span></div>
     <nav>${links.map(([id, href, label]) =>
       `<a href="${href}" class="${state.route === id ? "active" : ""}">${label}</a>`).join("")}
-      <a href="/keyboard">SJZ 键盘网页</a></nav>
+      <a href="/keyboard">SJZ 键盘网页</a>
+      <button class="theme-toggle" data-action="toggle-theme"
+        aria-label="切换主题，当前${modeLabel(themeMode)}"
+        title="切换主题：跟随系统 / 白天 / 夜晚（当前：${modeLabel(themeMode)}）">${modeLabel(themeMode)}</button></nav>
   </header>`;
 }
 
@@ -731,6 +736,12 @@ function bindEvents() {
         loadAdmin();
         return;
       }
+      if (action === "toggle-theme") {
+        const mode = cycleThemeMode();
+        render();
+        showToast(`主题：${modeLabel(mode)}`);
+        return;
+      }
       if (action === "admin-logout") {
         state.adminToken = "";
         tokenStore.set("");
@@ -809,13 +820,38 @@ function bindEvents() {
   });
 }
 
+/* ---------------- 主题 ---------------- */
+
+/** 启动时把存储的模式重新应用一次（内联脚本已设过，这里保证状态一致）。 */
+function applyThemeModeOnBoot() {
+  setThemeMode(getThemeMode());
+}
+
+/** Ctrl/Cmd + Shift + L 等价于点按钮。 */
+function bindThemeShortcut() {
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+    if (event.key !== "L" && event.key !== "l") return;
+    event.preventDefault();
+    const mode = cycleThemeMode();
+    render();
+    showToast(`主题：${modeLabel(mode)}`);
+  });
+}
+
 /* ---------------- 启动 ---------------- */
 
 // 预览模式：由 scripts/build-hub-preview.mjs 导入时不做任何初始化，
 // 页面会显式调用 applyForPreview() / renderPreview()。
 if (!globalThis.__HUB_PREVIEW__) {
+  // 主题：内联引导脚本已设好 data-theme，这里负责后续切换与跟随系统。
+  // 系统在 auto 模式下切换主题时重绘一次，让按钮文案同步。
+  applyThemeModeOnBoot();
+  watchSystemTheme(() => render());
+
   window.addEventListener("hashchange", syncRoute);
   bindEvents();
+  bindThemeShortcut();
   syncRoute();
   render();
   loadMeta().then(() => {

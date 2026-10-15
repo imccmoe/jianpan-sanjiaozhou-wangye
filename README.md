@@ -54,6 +54,35 @@ python -m http.server 8788 --directory public
 # 请直接访问 http://localhost:8788/keyboard.html
 ```
 
+## 主题（白天 / 夜晚）
+
+两个页面都支持三档主题，默认**跟随系统**：
+
+| 模式 | 行为 |
+| --- | --- |
+| 跟随系统（默认） | 读取 `prefers-color-scheme`，系统切换时页面实时跟随 |
+| 白天 | 固定亮色，忽略系统设置 |
+| 夜晚 | 固定暗色，忽略系统设置 |
+
+切换方式：顶部栏的主题按钮（点击循环 `跟随系统 → 白天 → 夜晚`），或快捷键 `Ctrl/Cmd + Shift + L`。
+选择保存在 `localStorage` 的 `zh-hub-theme`，刷新与跨页面都生效。
+
+实现要点：
+
+- `<html data-theme="light|dark">` 始终是**解析后**的具体值，`auto` 由 JS 解析，CSS 只有两套规则
+- 两个页面的 `<head>` 里都有一段内联引导脚本，**在样式表之前**写好 `data-theme`，避免白闪
+- 所有表面色都收进语义变量，两套主题必须定义**完全相同的变量集合**（由 `tests/theme.test.js` 强制）
+- 卡片商品图底板在两套主题下都保持浅色：这些 PNG 是 82% 透明、可见像素平均亮度仅 44/255 的官方图，
+  底板跟着变暗会让枪械与背景融为一片
+
+主题相关的验证：
+
+```powershell
+npm test          # 含 8 项主题测试：变量集合对齐、无自引用、无硬编码颜色、引导脚本时序等
+npm run ui:theme  # 用 CDP 模拟系统亮/暗，验证跟随、循环切换、持久化与配色真的变化
+npm run shots:theme  # 生成 .shots/{hub,keyboard}-{light,dark}.png 便于人工核对
+```
+
 ## 审核台
 
 审核台地址是 **`/hub/#/admin`**（首页有入口卡片，配装站顶部导航里也有「审核台」）：
