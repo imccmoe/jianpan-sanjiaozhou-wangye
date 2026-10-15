@@ -6,7 +6,6 @@ import test from "node:test";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const HUB_APP = path.join(ROOT, "public", "hub", "app.js");
 const HUB_FORMAT = path.join(ROOT, "public", "hub", "format.js");
-const LANDING = path.join(ROOT, "public", "index.html");
 const README = path.join(ROOT, "README.md");
 
 const hubSource = fs.readFileSync(HUB_APP, "utf8");
@@ -32,10 +31,12 @@ test("审核台前端具备完整的登录与审核操作能力", () => {
   }
 });
 
-test("审核台有可发现的入口（首页卡片 + 顶部导航 + 文档）", () => {
-  const landing = fs.readFileSync(LANDING, "utf8");
-  assert.match(landing, /href="\/hub\/#\/admin"/, "首页缺少审核台入口");
+test("审核台有可发现的入口（顶部导航 + 文档）", () => {
+  // 键盘站拆出后 public/index.html 已移除，站点根路径由 Pages 的 SPA 回退落到 /hub/，
+  // 因此入口只有两处：配装站顶部导航与 README。
   assert.match(hubSource, /\["admin", "#\/admin", "审核台"\]/, "顶部导航缺少审核台链接");
+  assert.ok(!fs.existsSync(path.join(ROOT, "public", "index.html")),
+    "public/index.html 已随键盘站移出，若重新加入需同步更新本测试");
 
   const readme = fs.readFileSync(README, "utf8");
   assert.match(readme, /\/hub\/#\/admin/, "README 未给出审核台地址");

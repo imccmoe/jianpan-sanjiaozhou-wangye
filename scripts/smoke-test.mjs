@@ -104,10 +104,35 @@ async function dispatchApi(request, env) {
   return handler({ request, env, params, waitUntil() {}, next: async () => new Response("not found", { status: 404 }) });
 }
 
+/**
+ * 解析 public/_redirects（Cloudflare Pages 语法：`源 目标 [状态码]`）。
+ * 只支持本项目用到的精确路径规则与 3xx 状态码。
+ */
+function loadRedirects() {
+  const file = path.join(PUBLIC_DIR, "_redirects");
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split(/\s+/))
+    .filter((parts) => parts.length >= 2)
+    .map(([from, to, status]) => ({ from, to, status: Number(status) || 302 }));
+}
+const REDIRECTS = loadRedirects();
+
 function serveStatic(request, response) {
   // request.url 是路径形式（如 /hub/），必须补上 origin 才能构造 URL。
   const url = new URL(request.url, "http://127.0.0.1");
   let pathname = decodeURIComponent(url.pathname);
+
+  // 先应用 _redirects，与 Pages 的行为保持一致
+  const rule = REDIRECTS.find((entry) => entry.from === pathname);
+  if (rule) {
+    response.writeHead(rule.status, { location: rule.to }).end();
+    return;
+  }
+
   if (pathname.endsWith("/")) pathname += "index.html";
   const target = path.join(PUBLIC_DIR, pathname);
   const resolved = path.resolve(target);
@@ -119,15 +144,10 @@ function serveStatic(request, response) {
     ? path.join(resolved, "index.html")
     : resolved;
   if (!fs.existsSync(file)) {
-    // Pages 的 SPA 行为：找不到路径时回退到站点首页。
-    // 但 /.well-known/* 必须保持 404 —— Chrome DevTools 会探测
+    // /.well-known/* 必须保持 404 —— Chrome DevTools 会探测
     // /.well-known/appspecific/com.chrome.devtools.json，收到 HTML 会解析报错。
-    if (pathname.startsWith("/.well-known/")) {
-      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
-      return;
-    }
-    const fallback = path.join(PUBLIC_DIR, "index.html");
-    response.writeHead(404, { "content-type": MIME[".html"] }).end(fs.readFileSync(fallback));
+    // 其余路径返回纯 404：站点根路径由 _redirects 处理，没有 SPA 回退。
+    response.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
     return;
   }
   response.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" })
@@ -196,19 +216,30 @@ async function main() {
   try {
     console.log("\n[静态资源]");
     for (const [pathname, needle] of [
-      ["/", "ZFQ 站点导航"],
+      // 根路径由 _redirects 302 到 /hub/，落地的 index.html 里没有「配装广场」
+      // （那是前端 JS 渲染的），所以这里断言页面标题。
+      ["/", "ZFQ 配装方案站"],
       ["/hub/", "ZFQ 配装方案站"],
       ["/hub/hub.css", "--violet"],
       ["/hub/app.js", "hashchange"],
-      ["/keyboard.html", "SJZ 三键音乐键盘"],
-      ["/app.js", "loadCatalog"],
-      ["/data/music-catalog.json", "\"songs\""],
       ["/.well-known/appspecific/com.chrome.devtools.json", "\"workspace\""]
     ]) {
-      const response = await fetch(`${base}${pathname}`);
+      // 跟随重定向：根路径由 public/_redirects 302 到 /hub/
+      const response = await fetch(`${base}${pathname}`, { redirect: "follow" });
       const body = await response.text();
       check(`${pathname} 可访问（HTTP ${response.status}）`, response.ok && body.includes(needle), `未包含 ${needle}`);
     }
+
+    // 单独断言重定向本身（不跟随，检查状态码与 Location）
+    const redirect = await fetch(`${base}/`, { redirect: "manual" });
+    check("根路径返回 302 指向 /hub/",
+      [301, 302, 308].includes(redirect.status) && (redirect.headers.get("location") || "").includes("/hub/"),
+      `HTTP ${redirect.status} → ${redirect.headers.get("location")}`);
+
+    // 键盘站已拆出，旧链接应给出重定向而不是 404
+    const legacy = await fetch(`${base}/keyboard`, { redirect: "manual" });
+    check("旧键盘页链接返回重定向而非 404",
+      [301, 302, 308].includes(legacy.status), `HTTP ${legacy.status}`);
 
     console.log("\n[元信息]");
     const meta = await json("/api/meta");

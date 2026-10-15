@@ -122,21 +122,23 @@ async function main() {
   }
 
   console.log("\n[静态资源]");
+  // 根路径与旧键盘链接由 public/_redirects 处理，先显式校验重定向本身。
+  const rootRedirect = await fetch(`${BASE}/`, { redirect: "manual", headers: { connection: "close" } });
+  check("根路径返回 302 指向 /hub/",
+    [301, 302, 308].includes(rootRedirect.status) && (rootRedirect.headers.get("location") || "").includes("/hub/"),
+    `HTTP ${rootRedirect.status} → ${rootRedirect.headers.get("location")}`);
+  const legacyRedirect = await fetch(`${BASE}/keyboard`, { redirect: "manual", headers: { connection: "close" } });
+  check("旧键盘页链接返回重定向而非 404",
+    [301, 302, 308].includes(legacyRedirect.status), `HTTP ${legacyRedirect.status}`);
+
   for (const [path, needle] of [
-    ["/", "ZFQ 站点导航"],
     ["/hub/", "ZFQ 配装方案站"],
     ["/hub/hub.css", "--violet"],
     ["/hub/api.js", "admin/review"],
     ["/hub/app.js", "hashchange"],
     ["/hub/format.js", "barWidth"],
-    ["/keyboard", "SJZ 三键音乐键盘"],
-    ["/styles.css", "--violet"],
-    ["/app.js", "loadCatalog"],
-    ["/device.js", "APP_PID"],
-    ["/firmware.js", "decryptFirmware"],
-    ["/music-engine.js", "compileSong"],
-    ["/data/music-catalog.json", "\"songs\""],
-    ["/firmware/CH32V203C8T.enc.hex", "GXM-AES128-GCM-HEX-V1"]
+    ["/hub/theme.js", "prefers-color-scheme"],
+    ["/data/schemes.json", "orzice-authorized"]
   ]) {
     const result = await request(path);
     check(`${path}（HTTP ${result.status}）`, result.status === 200 && String(result.text).includes(needle),

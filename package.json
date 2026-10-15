@@ -1,6 +1,6 @@
 {
-  "name": "jianpan-sanjiaozhou-wangye",
-  "version": "0.1.0",
+  "name": "wy-zfq-config-hub",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,5 +25,6 @@
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
-  }
+  },
+  "description": "三角洲行动 / 无畏契约 社区配装方案站（Cloudflare Pages + D1）"
 }

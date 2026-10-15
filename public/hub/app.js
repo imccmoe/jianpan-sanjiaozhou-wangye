@@ -194,7 +194,6 @@ function header() {
     <div class="brand"><strong>ZFQ 配装方案站</strong><span>三角洲行动 / 无畏契约 · 社区方案库</span></div>
     <nav>${links.map(([id, href, label]) =>
       `<a href="${href}" class="${state.route === id ? "active" : ""}">${label}</a>`).join("")}
-      <a href="/keyboard">SJZ 键盘网页</a>
       <button class="theme-toggle" data-action="toggle-theme"
         aria-label="切换主题，当前${modeLabel(themeMode)}"
         title="切换主题：跟随系统 / 白天 / 夜晚（当前：${modeLabel(themeMode)}）">${modeLabel(themeMode)}</button></nav>

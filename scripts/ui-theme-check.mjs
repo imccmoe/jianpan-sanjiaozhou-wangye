@@ -171,53 +171,13 @@ async function main() {
   const cleared = await evaluate(`localStorage.getItem('zh-hub-theme')`);
   check("可以清掉已保存的主题模式", cleared === null, `实际 ${cleared}`);
 
-  // ---- 键盘页 ----
-  console.log("\n[键盘页 /keyboard]");
+  // 重新加载后应从 auto 开始，并跟随系统
   const stamp = Date.now();
-  // 先回到同源的空白页清一次存储，保证键盘页从 auto 开始
   await client.send("Page.navigate", { url: `${BASE}/hub/?t=${stamp}` });
-  await sleep(2500);
-  await evaluate(`localStorage.removeItem('zh-hub-theme')`);
-  await client.send("Page.navigate", { url: `${BASE}/keyboard?t=${stamp}` });
-  await sleep(3500);
-  const kbDark = await evaluate(SAMPLE);
-  check("键盘页存在主题切换按钮", Boolean(kbDark?.toggleText), JSON.stringify(kbDark));
-  check("键盘页跟随系统（当前系统为暗色）", kbDark?.theme === "dark", JSON.stringify(kbDark));
-  check("键盘页初始模式为 auto", kbDark?.mode === "auto", `实际 ${kbDark?.mode}`);
-
-  await evaluate(clickToggle);
-  await sleep(900);
-  const kbSwitched = await evaluate(SAMPLE);
-  check("键盘页点击后改变了主题", kbSwitched?.theme !== kbDark?.theme,
-    `${kbDark?.theme} → ${kbSwitched?.theme}；mode ${kbDark?.mode} → ${kbSwitched?.mode}；按钮 "${kbSwitched?.toggleText}"`);
-  check("键盘页切换后配色确实变化", kbSwitched?.bodyBg !== kbDark?.bodyBg,
-    `${kbDark?.bodyBg} → ${kbSwitched?.bodyBg}`);
-
-  // 键盘页切换主题不得清空录制状态（回归：曾经用 render() 导致输入被重置）
-  console.log("\n[键盘页：切主题不打断录制]");
-  await client.send("Page.navigate", { url: `${BASE}/keyboard?t=${stamp + 1}` });
   await sleep(3200);
-  const recordingKept = await evaluate(`(() => {
-    // 切到键位设置页，模拟正在录制按键
-    const tab = [...document.querySelectorAll('[data-view="mapping"]')][0];
-    if (!tab) return { error: 'no-tab' };
-    tab.click();
-    return { clicked: true };
-  })()`);
-  await sleep(800);
-  const beforeToggle = await evaluate(`(() => {
-    const before = document.querySelectorAll('.page *').length;
-    return { nodes: before, theme: document.documentElement.dataset.theme };
-  })()`);
-  await evaluate(clickToggle);
-  await sleep(800);
-  const afterToggle = await evaluate(`(() => ({
-    nodes: document.querySelectorAll('.page *').length,
-    theme: document.documentElement.dataset.theme
-  }))()`);
-  check("切主题不重建页面节点（不打断交互）",
-    beforeToggle?.nodes === afterToggle?.nodes && recordingKept?.clicked,
-    `节点数 ${beforeToggle?.nodes} → ${afterToggle?.nodes}`);
+  const reloaded = await evaluate(SAMPLE);
+  check("清空存储后回到 auto", reloaded?.mode === "auto", `实际 ${reloaded?.mode}`);
+  check("auto 下仍跟随系统（当前系统为暗色）", reloaded?.theme === "dark", JSON.stringify(reloaded));
 
   client.close();
 }

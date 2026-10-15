@@ -4,7 +4,7 @@
 // auto 由 JS 通过 matchMedia 解析，并监听系统变化实时跟随。
 // 这样 CSS 只需处理两个具体值，不存在第三套规则。
 //
-// 防闪烁：index.html / keyboard.html 里有一段内联脚本，在 CSS 之前
+// 防闪烁：public/hub/index.html 里有一段内联脚本，在 CSS 之前
 // 用同一套规则设置好 data-theme，模块加载后这里只负责后续交互。
 
 export const THEME_KEY = "zh-hub-theme";

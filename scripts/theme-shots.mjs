@@ -72,8 +72,7 @@ await client.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 9
 fs.mkdirSync(OUT, { recursive: true });
 
 const PAGES = [
-  ["hub", "/hub/"],
-  ["keyboard", "/keyboard"]
+  ["hub", "/hub/"]
 ];
 
 for (const [name, route] of PAGES) {
